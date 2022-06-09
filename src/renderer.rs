@@ -1,8 +1,8 @@
 use crate::{
-    mesh::{Mesh, Vertex},
+    loaded_font::LoadedFont,
+    mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
     terminal::Terminal,
-    texture::Texture,
 };
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 use vulkano::{
@@ -15,8 +15,7 @@ use vulkano::{
     },
     format::Format,
     image::{
-        attachment::AttachmentImage, view::ImageView, ImageAccess, ImageDimensions, ImageUsage,
-        SwapchainImage,
+        attachment::AttachmentImage, view::ImageView, ImageAccess, ImageUsage, SwapchainImage,
     },
     instance::{Instance, InstanceCreateInfo},
     pipeline::{
@@ -31,7 +30,6 @@ use vulkano::{
         Pipeline, PipelineBindPoint,
     },
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
     swapchain::{self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
     sync::{self, FlushError, GpuFuture},
 };
@@ -162,47 +160,11 @@ impl Renderer {
             CpuBufferPool::<vertex::ty::Data>::new(device.clone(), BufferUsage::all());
         let frag_uniform_buffer =
             CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
-        let vertices = [
-            Vertex {
-                uv: [0.0, 0.0],
-                position: [-1.0, -1.0, 0.0],
-            },
-            Vertex {
-                uv: [0.0, 1.0],
-                position: [-1.0, 1.0, 0.0],
-            },
-            Vertex {
-                uv: [1.0, 0.0],
-                position: [1.0, -1.0, 0.0],
-            },
-            Vertex {
-                uv: [1.0, 1.0],
-                position: [1.0, 1.0, 0.0],
-            },
-        ];
-        let indices = [0, 1, 2, 1, 2, 3];
-        let mesh = Mesh::new(device.clone(), &vertices, &indices)?;
-        let sampler = Sampler::new(
+        let font = LoadedFont::from_file(
             device.clone(),
-            SamplerCreateInfo {
-                mag_filter: Filter::Linear,
-                min_filter: Filter::Linear,
-                address_mode: [SamplerAddressMode::Repeat; 3],
-                mip_lod_bias: 1.0,
-                lod: 0.0..=100.0,
-                ..Default::default()
-            },
-        )?;
-        let texture = Texture::new(
             queue.clone(),
-            sampler.clone(),
-            Format::R8G8B8A8_SRGB,
-            ImageDimensions::Dim2d {
-                width: 50,
-                height: 50,
-                array_layers: 1,
-            },
-            &[254; 500 * 5000],
+            &terminal.borrow().config,
+            &"./ARIAL.TTF".to_string(),
         )?;
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -221,14 +183,16 @@ impl Renderer {
             }
 
             Event::RedrawEventsCleared => {
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-                let dimensions: [u32; 2] = surface.window().inner_size().into();
+                let chr = font.get_chr_by_id('a').unwrap();
+                let mesh = &chr.mesh;
+                let texture = &chr.texture;
                 let terminal = terminal.borrow();
+
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                 if recreate_swapchain {
                     let (new_swapchain, images) = match swapchain.recreate(SwapchainCreateInfo {
-                        image_extent: dimensions.into(),
+                        image_extent: surface.window().inner_size().into(),
                         ..swapchain.create_info()
                     }) {
                         Ok(r) => r,
@@ -275,7 +239,7 @@ impl Renderer {
                 };
                 let frag_uniform_buffer_subbuffer = {
                     let uniform_data = fragment::ty::Data {
-                        color: terminal.config.text_color.into(),
+                        color: terminal.config.font_color.into(),
                     };
 
                     Arc::new(frag_uniform_buffer.next(uniform_data).unwrap())
@@ -383,6 +347,7 @@ impl Renderer {
                 .unwrap()
             })
             .collect();
+        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
             .vertex_shader(shaders.vertex.entry_point("main").unwrap(), ())
@@ -398,8 +363,8 @@ impl Renderer {
             ]))
             .fragment_shader(shaders.fragment.entry_point("main").unwrap(), ())
             .depth_stencil_state(DepthStencilState::simple_depth_test())
-            .color_blend_state(ColorBlendState::new(1).blend_alpha())
-            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
+            .render_pass(subpass)
             .build(device.clone())?;
 
         Ok((pipeline, framebuffers))

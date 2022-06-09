@@ -18,7 +18,7 @@ impl Terminal {
     pub fn init() -> anyhow::Result<Option<Rc<RefCell<Self>>>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
-                let config = Config::new([0.0; 4], [1.0; 4]);
+                let config = Config::new([0.0; 4], [1.0; 4], 20.0);
 
                 Ok(Some(Self::new(pty, config)))
             }

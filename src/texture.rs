@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use vulkano::{
-    device::Queue,
+    device::{Device, Queue},
     format::Format,
     image::{view::ImageView, ImageDimensions, ImmutableImage, MipmapsCount},
-    sampler::Sampler,
+    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
 };
 
 pub struct Texture {
@@ -13,14 +13,25 @@ pub struct Texture {
 
 impl Texture {
     pub fn new(
+        device: Arc<Device>,
         queue: Arc<Queue>,
-        sampler: Arc<Sampler>,
         format: Format,
         dimensions: ImageDimensions,
-        bytes: &[u8],
+        data: &[u8],
     ) -> anyhow::Result<Self> {
+        let sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                mip_lod_bias: 1.0,
+                lod: 0.0..=100.0,
+                ..Default::default()
+            },
+        )?;
         let (image, _) = ImmutableImage::from_iter(
-            bytes.iter().cloned(),
+            data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
             format,
