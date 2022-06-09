@@ -71,7 +71,7 @@ impl Chr {
             height: metrics.height as u32,
             array_layers: 1,
         };
-        let texture = Texture::new(device, queue, Format::R8_UNORM, dims, bitmap)?;
+        let texture = Texture::new(device, queue, Format::R8_SRGB, dims, bitmap)?;
 
         Ok(texture)
     }
