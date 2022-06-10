@@ -6,17 +6,14 @@ mod terminal;
 mod texture;
 
 use renderer::Renderer;
+use std::rc::Rc;
 use terminal::Terminal;
 
 fn main() {
     let terminal = match Terminal::init().unwrap() {
-        Some(terminal) => terminal,
+        Some(terminal) => Rc::new(terminal),
         None => return,
     };
 
-    std::thread::sleep(std::time::Duration::from_millis(500));
-
-    println!("{}", terminal.borrow_mut().pty.read().unwrap());
-
-    Renderer::init(None, terminal.clone()).unwrap();
+    Renderer::init(None, terminal).unwrap();
 }

@@ -33,11 +33,15 @@ impl LoadedFont {
     }
 
     pub fn get_chr_by_id(&self, id: char) -> Option<Rc<Chr>> {
-        let i = id as usize - 33;
+        if id >= 33 as char {
+            let i = id as usize - 33;
 
-        match self.chrs.get(i) {
-            Some(chr) => Some(chr.clone()),
-            None => None,
+            match self.chrs.get(i) {
+                Some(chr) => Some(chr.clone()),
+                None => None,
+            }
+        } else {
+            None
         }
     }
 
@@ -61,7 +65,10 @@ impl LoadedFont {
                 let c = i as char;
                 let (metrics, bitmap) = font.rasterize(c, scale);
 
-                Chr::from_bitmap(device.clone(), queue.clone(), &metrics, &bitmap).ok()
+                match Chr::from_bitmap(device.clone(), queue.clone(), &metrics, &bitmap) {
+                    Ok(chr) => Some(Rc::new(chr)),
+                    Err(_) => None,
+                }
             })
             .collect()
     }

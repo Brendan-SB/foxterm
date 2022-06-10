@@ -2,18 +2,31 @@ use crate::{
     mesh::{Mesh, Vertex},
     texture::Texture,
 };
+use cgmath::Vector2;
 use fontdue::Metrics;
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use vulkano::{device::Device, device::Queue, format::Format, image::ImageDimensions};
 
 pub struct Chr {
     pub mesh: Mesh,
     pub texture: Texture,
+    pub dimensions: Vector2<f32>,
+    pub bearing: Vector2<f32>,
 }
 
 impl Chr {
-    pub fn new(mesh: Mesh, texture: Texture) -> Rc<Self> {
-        Rc::new(Self { mesh, texture })
+    pub fn new(
+        dimensions: Vector2<f32>,
+        bearing: Vector2<f32>,
+        mesh: Mesh,
+        texture: Texture,
+    ) -> Self {
+        Self {
+            dimensions,
+            bearing,
+            mesh,
+            texture,
+        }
     }
 
     pub fn from_bitmap(
@@ -21,36 +34,33 @@ impl Chr {
         queue: Arc<Queue>,
         metrics: &Metrics,
         bitmap: &Vec<u8>,
-    ) -> anyhow::Result<Rc<Self>> {
-        let mesh = Self::create_mesh(device.clone(), metrics)?;
+    ) -> anyhow::Result<Self> {
+        let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) / 500.0;
+        let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) / 500.0;
+        let mesh = Self::create_mesh(device.clone(), dimensions)?;
         let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
 
-        Ok(Self::new(mesh, texture))
+        Ok(Self::new(dimensions, bearing, mesh, texture))
     }
 
-    fn create_mesh(device: Arc<Device>, metrics: &Metrics) -> anyhow::Result<Mesh> {
-        let width = metrics.width as f32 / 100.0;
-        let height = metrics.height as f32 / 100.0;
+    fn create_mesh(device: Arc<Device>, dimensions: Vector2<f32>) -> anyhow::Result<Mesh> {
         let vertices = {
-            let width = width / 2.0;
-            let height = height / 2.0;
-
             [
                 Vertex {
                     uv: [0.0, 0.0],
-                    position: [-width, -height, 0.0],
+                    position: [0.0, 0.0, 0.0],
                 },
                 Vertex {
                     uv: [0.0, 1.0],
-                    position: [-width, height, 0.0],
+                    position: [0.0, dimensions.y, 0.0],
                 },
                 Vertex {
                     uv: [1.0, 0.0],
-                    position: [width, -height, 0.0],
+                    position: [dimensions.x, 0.0, 0.0],
                 },
                 Vertex {
                     uv: [1.0, 1.0],
-                    position: [width, height, 0.0],
+                    position: [dimensions.x, dimensions.y, 0.0],
                 },
             ]
         };

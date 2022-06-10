@@ -1,13 +1,23 @@
 use crate::{
-    loaded_font::LoadedFont,
+    loaded_font::{chr::Chr, LoadedFont},
     mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::Terminal,
+    terminal::{pty::Pty, Terminal},
 };
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use cgmath::{Matrix4, Vector3, Zero};
+use ringbuf::{Producer, RingBuffer};
+use std::{
+    rc::Rc,
+    sync::{Arc, RwLock},
+    thread,
+    time::Duration,
+};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
-    command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents},
+    command_buffer::{
+        pool::standard::StandardCommandPoolBuilder, AutoCommandBufferBuilder, CommandBufferUsage,
+        PrimaryAutoCommandBuffer, SubpassContents,
+    },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -43,10 +53,7 @@ use winit::{
 pub struct Renderer;
 
 impl Renderer {
-    pub fn init(
-        physical_index: Option<usize>,
-        terminal: Rc<RefCell<Terminal>>,
-    ) -> anyhow::Result<()> {
+    pub fn init(physical_index: Option<usize>, terminal: Rc<Terminal>) -> anyhow::Result<()> {
         let proj = cgmath::ortho::<f32>(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
         let required_extensions = vulkano_win::required_extensions();
         let instance = Instance::new(InstanceCreateInfo {
@@ -104,7 +111,7 @@ impl Renderer {
                 ..Default::default()
             },
         )?;
-        let shaders = Shaders::new(device.clone())?;
+        let shaders = Arc::new(Shaders::new(device.clone())?);
         let queue = queues.next().unwrap();
         let (mut swapchain, images) = {
             let surface_capabilities =
@@ -163,9 +170,14 @@ impl Renderer {
         let font = LoadedFont::from_file(
             device.clone(),
             queue.clone(),
-            &terminal.borrow().config,
+            &terminal.config,
             &"./ARIAL.TTF".to_string(),
         )?;
+        let (producer, mut consumer) = RingBuffer::new(1).split();
+
+        Self::spawn_terminal_worker(terminal.pty.clone(), producer);
+
+        let mut buffer = String::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
@@ -183,10 +195,9 @@ impl Renderer {
             }
 
             Event::RedrawEventsCleared => {
-                let chr = font.get_chr_by_id('a').unwrap();
-                let mesh = &chr.mesh;
-                let texture = &chr.texture;
-                let terminal = terminal.borrow();
+                if let Some(b) = consumer.pop() {
+                    buffer = b;
+                }
 
                 previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -232,34 +243,6 @@ impl Renderer {
                     recreate_swapchain = true;
                 }
 
-                let uniform_buffer_subbuffer = {
-                    let uniform_data = vertex::ty::Data { proj: proj.into() };
-
-                    Arc::new(uniform_buffer.next(uniform_data).unwrap())
-                };
-                let frag_uniform_buffer_subbuffer = {
-                    let uniform_data = fragment::ty::Data {
-                        color: terminal.config.font_color.into(),
-                    };
-
-                    Arc::new(frag_uniform_buffer.next(uniform_data).unwrap())
-                };
-                let descriptor_set_layouts = pipeline.layout().set_layouts();
-                let set_layout = descriptor_set_layouts.get(0).unwrap();
-                let set = PersistentDescriptorSet::new(
-                    set_layout.clone(),
-                    [
-                        WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
-                        WriteDescriptorSet::buffer(1, frag_uniform_buffer_subbuffer),
-                        WriteDescriptorSet::image_view_sampler(
-                            2,
-                            texture.image.clone(),
-                            texture.sampler.clone(),
-                        ),
-                    ],
-                )
-                .unwrap();
-
                 let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
@@ -273,20 +256,26 @@ impl Renderer {
                         SubpassContents::Inline,
                         vec![terminal.config.bg_color.into(), 1_f32.into()],
                     )
-                    .unwrap()
-                    .bind_pipeline_graphics(pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Graphics,
-                        pipeline.layout().clone(),
-                        0,
-                        vec![set.clone()],
-                    )
-                    .bind_vertex_buffers(0, mesh.vertices.clone())
-                    .bind_index_buffer(mesh.indices.clone())
-                    .draw_indexed(mesh.indices.len() as u32, 1, 0, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
                     .unwrap();
+
+                let mut translation = Vector3::zero();
+
+                for c in buffer.chars() {
+                    if let Some(chr) = font.get_chr_by_id(c) {
+                        Self::draw_chr(
+                            &mut builder,
+                            pipeline.clone(),
+                            &uniform_buffer,
+                            &frag_uniform_buffer,
+                            &terminal,
+                            chr,
+                            &mut translation,
+                            proj,
+                        );
+                    }
+                }
+
+                builder.end_render_pass().unwrap();
 
                 let command_buffer = builder.build().unwrap();
                 let future = previous_frame_end
@@ -318,6 +307,80 @@ impl Renderer {
 
             _ => {}
         });
+    }
+
+    fn spawn_terminal_worker(pty: Arc<RwLock<Pty>>, mut producer: Producer<String>) {
+        thread::spawn(move || loop {
+            let content = { pty.write().unwrap().read().unwrap() };
+
+            while let Err(_) = producer.push(content.clone()) {
+                thread::sleep(Duration::from_millis(1));
+            }
+        });
+    }
+
+    fn draw_chr(
+        builder: &mut AutoCommandBufferBuilder<
+            PrimaryAutoCommandBuffer,
+            StandardCommandPoolBuilder,
+        >,
+        pipeline: Arc<GraphicsPipeline>,
+        uniform_buffer: &CpuBufferPool<vertex::ty::Data>,
+        frag_uniform_buffer: &CpuBufferPool<fragment::ty::Data>,
+        terminal: &Terminal,
+        chr: Rc<Chr>,
+        translation: &mut Vector3<f32>,
+        proj: Matrix4<f32>,
+    ) {
+        let uniform_buffer_subbuffer = {
+            let transform = Matrix4::from_translation(
+                *translation + Vector3::new(chr.bearing.x, -chr.bearing.y, 0.0),
+            );
+            let uniform_data = vertex::ty::Data {
+                proj: proj.into(),
+                transform: transform.into(),
+            };
+
+            Arc::new(uniform_buffer.next(uniform_data).unwrap())
+        };
+
+        *translation += Vector3::new(chr.dimensions.x + chr.bearing.x, 0.0, 0.0);
+
+        let frag_uniform_buffer_subbuffer = {
+            let uniform_data = fragment::ty::Data {
+                color: terminal.config.font_color.into(),
+            };
+
+            Arc::new(frag_uniform_buffer.next(uniform_data).unwrap())
+        };
+        let descriptor_set_layouts = pipeline.layout().set_layouts();
+        let set_layout = descriptor_set_layouts.get(0).unwrap();
+        let set = PersistentDescriptorSet::new(
+            set_layout.clone(),
+            [
+                WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer),
+                WriteDescriptorSet::buffer(1, frag_uniform_buffer_subbuffer),
+                WriteDescriptorSet::image_view_sampler(
+                    2,
+                    chr.texture.image.clone(),
+                    chr.texture.sampler.clone(),
+                ),
+            ],
+        )
+        .unwrap();
+
+        builder
+            .bind_pipeline_graphics(pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                pipeline.layout().clone(),
+                0,
+                vec![set.clone()],
+            )
+            .bind_vertex_buffers(0, chr.mesh.vertices.clone())
+            .bind_index_buffer(chr.mesh.indices.clone())
+            .draw_indexed(chr.mesh.indices.len() as u32, 1, 0, 0, 0)
+            .unwrap();
     }
 
     fn window_size_dependent_setup(
