@@ -3,17 +3,21 @@ pub mod pty;
 
 use config::Config;
 use pty::Pty;
-use std::{env, sync::Arc};
+use std::{
+    env,
+    sync::{Arc, RwLock},
+};
 use winit_input_helper::{TextChar, WinitInputHelper};
 
 pub struct Terminal {
     pub pty: Arc<Pty>,
     pub config: Config,
+    pub buf: Arc<RwLock<String>>,
 }
 
 impl Terminal {
-    pub fn new(pty: Arc<Pty>, config: Config) -> Self {
-        Self { pty, config }
+    pub fn new(pty: Arc<Pty>, config: Config, buf: Arc<RwLock<String>>) -> Self {
+        Self { pty, config, buf }
     }
 
     pub fn init() -> anyhow::Result<Option<Self>> {
@@ -21,7 +25,11 @@ impl Terminal {
             Some(pty) => {
                 let config = Config::new([0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
 
-                Ok(Some(Self::new(Arc::new(pty), config)))
+                Ok(Some(Self::new(
+                    Arc::new(pty),
+                    config,
+                    Arc::new(RwLock::new(String::new())),
+                )))
             }
 
             None => Ok(None),

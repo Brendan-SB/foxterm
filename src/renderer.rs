@@ -6,8 +6,11 @@ use crate::{
     APP_NAME,
 };
 use cgmath::{Matrix4, Vector3};
-use ringbuf::{Producer, RingBuffer};
-use std::{rc::Rc, sync::Arc, thread, time::Duration};
+use std::{
+    rc::Rc,
+    sync::{Arc, RwLock},
+    thread,
+};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
     command_buffer::{
@@ -167,12 +170,10 @@ impl Renderer {
         let frag_uniform_buffer =
             CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
         let font = LoadedFont::from_file(device.clone(), queue.clone(), &terminal.config)?;
-        let (producer, mut consumer) = RingBuffer::new(u8::MAX as usize).split();
 
-        Self::spawn_terminal_worker(terminal.pty.clone(), producer);
+        Self::spawn_terminal_worker(terminal.pty.clone(), terminal.buf.clone());
 
         let mut input = WinitInputHelper::new();
-        let mut buffer = String::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
@@ -194,10 +195,6 @@ impl Renderer {
 
                 Event::RedrawEventsCleared => {
                     terminal.update_pty(&input).unwrap();
-
-                    if let Some(b) = consumer.pop() {
-                        buffer += b.as_str();
-                    }
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -263,7 +260,7 @@ impl Renderer {
 
                     let mut translation = Vector3::new(1.0 + font.scale, -1.0 - font.scale, 0.0);
 
-                    for c in buffer.chars() {
+                    for c in terminal.buf.read().unwrap().chars() {
                         if let Some(chr) = font.get_chr_by_id(c) {
                             Self::draw_chr(
                                 &mut builder,
@@ -314,16 +311,15 @@ impl Renderer {
         });
     }
 
-    fn spawn_terminal_worker(pty: Arc<Pty>, mut producer: Producer<String>) {
+    fn spawn_terminal_worker(pty: Arc<Pty>, buf: Arc<RwLock<String>>) {
         thread::spawn(move || loop {
             if let Ok(content) = pty.read() {
-                while let Err(_) = producer.push(content.clone()) {
-                    thread::sleep(Duration::from_millis(1));
-                }
+                *buf.write().unwrap() += content.as_str();
             }
         });
     }
 
+    #[inline]
     fn draw_chr(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -396,6 +392,7 @@ impl Renderer {
             .unwrap();
     }
 
+    #[inline]
     fn window_size_dependent_setup(
         render_pass: Arc<RenderPass>,
         device: Arc<Device>,
