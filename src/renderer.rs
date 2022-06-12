@@ -3,15 +3,11 @@ use crate::{
     mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
     terminal::{pty::Pty, Terminal},
+    APP_NAME,
 };
-use cgmath::{Matrix4, Vector3, Zero};
+use cgmath::{Matrix4, Vector3};
 use ringbuf::{Producer, RingBuffer};
-use std::{
-    rc::Rc,
-    sync::{Arc, RwLock},
-    thread,
-    time::Duration,
-};
+use std::{rc::Rc, sync::Arc, thread, time::Duration};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
     command_buffer::{
@@ -49,6 +45,7 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+use winit_input_helper::WinitInputHelper;
 
 pub struct Renderer;
 
@@ -61,7 +58,9 @@ impl Renderer {
             ..Default::default()
         })?;
         let event_loop = EventLoop::new();
-        let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone())?;
+        let surface = WindowBuilder::new()
+            .with_title(APP_NAME)
+            .build_vk_surface(&event_loop, instance.clone())?;
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::none()
@@ -167,154 +166,160 @@ impl Renderer {
             CpuBufferPool::<vertex::ty::Data>::new(device.clone(), BufferUsage::all());
         let frag_uniform_buffer =
             CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
-        let font = LoadedFont::from_file(
-            device.clone(),
-            queue.clone(),
-            &terminal.config,
-            &"./ARIAL.TTF".to_string(),
-        )?;
-        let (producer, mut consumer) = RingBuffer::new(1).split();
+        let font = LoadedFont::from_file(device.clone(), queue.clone(), &terminal.config)?;
+        let (producer, mut consumer) = RingBuffer::new(u8::MAX as usize).split();
 
         Self::spawn_terminal_worker(terminal.pty.clone(), producer);
 
+        let mut input = WinitInputHelper::new();
         let mut buffer = String::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
-        event_loop.run(move |event, _, control_flow| match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
+        event_loop.run(move |event, _, control_flow| {
+            input.update(&event);
 
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
-            }
+            match event {
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => *control_flow = ControlFlow::Exit,
 
-            Event::RedrawEventsCleared => {
-                if let Some(b) = consumer.pop() {
-                    buffer = b;
-                }
-
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-                if recreate_swapchain {
-                    let (new_swapchain, images) = match swapchain.recreate(SwapchainCreateInfo {
-                        image_extent: surface.window().inner_size().into(),
-                        ..swapchain.create_info()
-                    }) {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
-
-                    swapchain = new_swapchain;
-
-                    let (new_pipeline, new_framebuffers) = Self::window_size_dependent_setup(
-                        render_pass.clone(),
-                        device.clone(),
-                        shaders.clone(),
-                        &images,
-                    )
-                    .unwrap();
-
-                    pipeline = new_pipeline;
-                    framebuffers = new_framebuffers;
-                    recreate_swapchain = false;
-                }
-
-                let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
-                        Ok(r) => r,
-
-                        Err(AcquireError::OutOfDate) => {
-                            recreate_swapchain = true;
-
-                            return;
-                        }
-
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-
-                if suboptimal {
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(_),
+                    ..
+                } => {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
-                    queue.family(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
+                Event::RedrawEventsCleared => {
+                    terminal.update_pty(&input).unwrap();
 
-                builder
-                    .begin_render_pass(
-                        framebuffers[image_num].clone(),
-                        SubpassContents::Inline,
-                        vec![terminal.config.bg_color.into(), 1_f32.into()],
+                    if let Some(b) = consumer.pop() {
+                        buffer += b.as_str();
+                    }
+
+                    previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                    if recreate_swapchain {
+                        let (new_swapchain, images) =
+                            match swapchain.recreate(SwapchainCreateInfo {
+                                image_extent: surface.window().inner_size().into(),
+                                ..swapchain.create_info()
+                            }) {
+                                Ok(r) => r,
+                                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                                    return
+                                }
+                                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                            };
+
+                        swapchain = new_swapchain;
+
+                        let (new_pipeline, new_framebuffers) = Self::window_size_dependent_setup(
+                            render_pass.clone(),
+                            device.clone(),
+                            shaders.clone(),
+                            &images,
+                        )
+                        .unwrap();
+
+                        pipeline = new_pipeline;
+                        framebuffers = new_framebuffers;
+                        recreate_swapchain = false;
+                    }
+
+                    let (image_num, suboptimal, acquire_future) =
+                        match swapchain::acquire_next_image(swapchain.clone(), None) {
+                            Ok(r) => r,
+
+                            Err(AcquireError::OutOfDate) => {
+                                recreate_swapchain = true;
+
+                                return;
+                            }
+
+                            Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                        };
+
+                    if suboptimal {
+                        recreate_swapchain = true;
+                    }
+
+                    let mut builder = AutoCommandBufferBuilder::primary(
+                        device.clone(),
+                        queue.family(),
+                        CommandBufferUsage::OneTimeSubmit,
                     )
                     .unwrap();
 
-                let mut translation = Vector3::zero();
+                    builder
+                        .begin_render_pass(
+                            framebuffers[image_num].clone(),
+                            SubpassContents::Inline,
+                            vec![terminal.config.bg_color.into(), 1_f32.into()],
+                        )
+                        .unwrap();
 
-                for c in buffer.chars() {
-                    if let Some(chr) = font.get_chr_by_id(c) {
-                        Self::draw_chr(
-                            &mut builder,
-                            pipeline.clone(),
-                            &uniform_buffer,
-                            &frag_uniform_buffer,
-                            &terminal,
-                            chr,
-                            &mut translation,
-                            proj,
-                        );
+                    let mut translation = Vector3::new(1.0 + font.scale, -1.0 - font.scale, 0.0);
+
+                    for c in buffer.chars() {
+                        if let Some(chr) = font.get_chr_by_id(c) {
+                            Self::draw_chr(
+                                &mut builder,
+                                pipeline.clone(),
+                                &uniform_buffer,
+                                &frag_uniform_buffer,
+                                &terminal,
+                                chr,
+                                &mut translation,
+                                proj,
+                                &font,
+                            );
+                        }
+                    }
+
+                    builder.end_render_pass().unwrap();
+
+                    let command_buffer = builder.build().unwrap();
+                    let future = previous_frame_end
+                        .take()
+                        .unwrap()
+                        .join(acquire_future)
+                        .then_execute(queue.clone(), command_buffer)
+                        .unwrap()
+                        .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                        .then_signal_fence_and_flush();
+
+                    match future {
+                        Ok(future) => {
+                            previous_frame_end = Some(future.boxed());
+                        }
+
+                        Err(FlushError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        }
+
+                        Err(e) => {
+                            println!("Failed to flush future: {:?}", e);
+
+                            previous_frame_end = Some(sync::now(device.clone()).boxed());
+                        }
                     }
                 }
 
-                builder.end_render_pass().unwrap();
-
-                let command_buffer = builder.build().unwrap();
-                let future = previous_frame_end
-                    .take()
-                    .unwrap()
-                    .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-                    .then_signal_fence_and_flush();
-
-                match future {
-                    Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
-                    }
-
-                    Err(FlushError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
-                    }
-
-                    Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
-
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
-                    }
-                }
+                _ => {}
             }
-
-            _ => {}
         });
     }
 
-    fn spawn_terminal_worker(pty: Arc<RwLock<Pty>>, mut producer: Producer<String>) {
+    fn spawn_terminal_worker(pty: Arc<Pty>, mut producer: Producer<String>) {
         thread::spawn(move || loop {
-            let content = { pty.write().unwrap().read().unwrap() };
-
-            while let Err(_) = producer.push(content.clone()) {
-                thread::sleep(Duration::from_millis(1));
+            if let Ok(content) = pty.read() {
+                while let Err(_) = producer.push(content.clone()) {
+                    thread::sleep(Duration::from_millis(1));
+                }
             }
         });
     }
@@ -331,20 +336,28 @@ impl Renderer {
         chr: Rc<Chr>,
         translation: &mut Vector3<f32>,
         proj: Matrix4<f32>,
+        font: &LoadedFont,
     ) {
+        translation.x += chr.bearing.x;
+
+        if translation.x >= 1.0 {
+            translation.x = -1.0;
+            translation.y += font.scale;
+        }
+
         let uniform_buffer_subbuffer = {
-            let transform = Matrix4::from_translation(
-                *translation + Vector3::new(chr.bearing.x, -chr.bearing.y, 0.0),
-            );
             let uniform_data = vertex::ty::Data {
                 proj: proj.into(),
-                transform: transform.into(),
+                transform: Matrix4::from_translation(
+                    *translation - Vector3::new(0.0, chr.bearing.y, 0.0),
+                )
+                .into(),
             };
 
             Arc::new(uniform_buffer.next(uniform_data).unwrap())
         };
 
-        *translation += Vector3::new(chr.dimensions.x + chr.bearing.x, 0.0, 0.0);
+        translation.x += chr.dimensions.x;
 
         let frag_uniform_buffer_subbuffer = {
             let uniform_data = fragment::ty::Data {

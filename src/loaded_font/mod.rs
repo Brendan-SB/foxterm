@@ -1,6 +1,6 @@
 pub mod chr;
 
-use crate::terminal::config::Config;
+use crate::{terminal::config::Config, SCALE};
 use chr::Chr;
 use fontdue::{Font, FontSettings};
 use std::{fs::File, io::Read, rc::Rc, sync::Arc};
@@ -9,27 +9,27 @@ use vulkano::{device::Device, device::Queue};
 
 pub struct LoadedFont {
     pub chrs: Vec<Rc<Chr>>,
+    pub scale: f32,
 }
 
 impl LoadedFont {
-    pub fn new(chrs: Vec<Rc<Chr>>) -> Self {
-        Self { chrs }
+    pub fn new(chrs: Vec<Rc<Chr>>, scale: f32) -> Self {
+        Self { chrs, scale }
     }
 
     pub fn from_file(
         device: Arc<Device>,
         queue: Arc<Queue>,
         config: &Config,
-        path: &String,
     ) -> anyhow::Result<Self> {
-        let bytes = Self::load_bytes(path)?;
+        let bytes = Self::load_bytes(&config.font_path)?;
         let font = match Font::from_bytes(bytes.as_slice(), FontSettings::default()) {
             Ok(font) => font,
             Err(e) => return Err(LoadedFontError::FontdueError(e).into()),
         };
         let chrs = Self::create_chrs(device, queue, &font, config.font_scale);
 
-        Ok(Self::new(chrs))
+        Ok(Self::new(chrs, config.font_scale * SCALE))
     }
 
     pub fn get_chr_by_id(&self, id: char) -> Option<Rc<Chr>> {

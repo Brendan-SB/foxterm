@@ -1,6 +1,7 @@
 use crate::{
     mesh::{Mesh, Vertex},
     texture::Texture,
+    SCALE,
 };
 use cgmath::Vector2;
 use fontdue::Metrics;
@@ -35,8 +36,8 @@ impl Chr {
         metrics: &Metrics,
         bitmap: &Vec<u8>,
     ) -> anyhow::Result<Self> {
-        let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) / 500.0;
-        let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) / 500.0;
+        let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) * SCALE;
+        let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) * SCALE;
         let mesh = Self::create_mesh(device.clone(), dimensions)?;
         let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
 
