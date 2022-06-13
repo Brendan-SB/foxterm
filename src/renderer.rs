@@ -5,8 +5,8 @@ use crate::{
     terminal::Terminal,
     APP_NAME,
 };
-use cgmath::{Matrix4, Vector3};
-use std::{rc::Rc, sync::Arc};
+use cgmath::{Matrix4, Vector2};
+use std::sync::Arc;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
     command_buffer::{
@@ -49,7 +49,7 @@ use winit_input_helper::WinitInputHelper;
 pub struct Renderer;
 
 impl Renderer {
-    pub fn init(physical_index: Option<usize>, terminal: Rc<Terminal>) -> anyhow::Result<()> {
+    pub fn init(physical_index: Option<usize>, terminal: Arc<Terminal>) -> anyhow::Result<()> {
         let proj = cgmath::ortho::<f32>(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
         let required_extensions = vulkano_win::required_extensions();
         let instance = Instance::new(InstanceCreateInfo {
@@ -165,7 +165,14 @@ impl Renderer {
             CpuBufferPool::<vertex::ty::Data>::new(device.clone(), BufferUsage::all());
         let frag_uniform_buffer =
             CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
-        let font = LoadedFont::from_file(device.clone(), queue.clone(), &terminal.config)?;
+        let font = Arc::new(LoadedFont::from_file(
+            device.clone(),
+            queue.clone(),
+            &terminal.config,
+        )?);
+
+        terminal.clone().spawn_worker(font.clone());
+
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -251,22 +258,20 @@ impl Renderer {
                         )
                         .unwrap();
 
-                    let mut translation = Vector3::new(1.0 + font.scale, -1.0 - font.scale, 0.0);
+                    let mut translation = Vector2::new(1.0 + font.scale, -1.0 - font.scale);
 
-                    for c in terminal.buf.read().unwrap().chars() {
-                        if let Some(chr) = font.get_chr_by_id(c) {
-                            Self::draw_chr(
-                                &mut builder,
-                                pipeline.clone(),
-                                &uniform_buffer,
-                                &frag_uniform_buffer,
-                                &terminal,
-                                chr,
-                                &mut translation,
-                                proj,
-                                &font,
-                            );
-                        }
+                    for chr in &*terminal.buf.read().unwrap() {
+                        Self::draw_chr(
+                            &mut builder,
+                            pipeline.clone(),
+                            &uniform_buffer,
+                            &frag_uniform_buffer,
+                            &terminal,
+                            &mut translation,
+                            chr.clone(),
+                            font.clone(),
+                            proj,
+                        );
                     }
 
                     builder.end_render_pass().unwrap();
@@ -304,7 +309,6 @@ impl Renderer {
         });
     }
 
-    #[inline]
     fn draw_chr(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -314,10 +318,10 @@ impl Renderer {
         uniform_buffer: &CpuBufferPool<vertex::ty::Data>,
         frag_uniform_buffer: &CpuBufferPool<fragment::ty::Data>,
         terminal: &Terminal,
-        chr: Rc<Chr>,
-        translation: &mut Vector3<f32>,
+        translation: &mut Vector2<f32>,
+        chr: Arc<Chr>,
+        font: Arc<LoadedFont>,
         proj: Matrix4<f32>,
-        font: &LoadedFont,
     ) {
         translation.x += chr.bearing.x;
 
@@ -330,7 +334,7 @@ impl Renderer {
             let uniform_data = vertex::ty::Data {
                 proj: proj.into(),
                 transform: Matrix4::from_translation(
-                    *translation - Vector3::new(0.0, chr.bearing.y, 0.0),
+                    (*translation - Vector2::new(0.0, chr.bearing.y)).extend(0.0),
                 )
                 .into(),
             };
@@ -377,7 +381,6 @@ impl Renderer {
             .unwrap();
     }
 
-    #[inline]
     fn window_size_dependent_setup(
         render_pass: Arc<RenderPass>,
         device: Arc<Device>,

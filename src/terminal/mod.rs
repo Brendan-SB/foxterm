@@ -1,6 +1,7 @@
 pub mod config;
 pub mod pty;
 
+use crate::loaded_font::{chr::Chr, LoadedFont};
 use config::Config;
 use pty::Pty;
 use std::{
@@ -12,25 +13,22 @@ use winit_input_helper::{TextChar, WinitInputHelper};
 
 pub struct Terminal {
     pub config: Config,
-    pub pty: Arc<Pty>,
-    pub buf: Arc<RwLock<String>>,
+    pub pty: Pty,
+    pub buf: RwLock<Vec<Arc<Chr>>>,
 }
-
 impl Terminal {
-    pub fn new(config: Config, pty: Arc<Pty>, buf: Arc<RwLock<String>>) -> Self {
+    pub fn new(config: Config, pty: Pty, buf: RwLock<Vec<Arc<Chr>>>) -> Self {
         Self { config, pty, buf }
     }
 
-    pub fn init() -> anyhow::Result<Option<Self>> {
+    pub fn init() -> anyhow::Result<Option<Arc<Self>>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
                 let config = Config::new([0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
-                let pty = Arc::new(pty);
-                let buf = Arc::new(RwLock::new(String::new()));
+                let pty = pty;
+                let buf = RwLock::new(Vec::new());
 
-                Self::spawn_worker(pty.clone(), buf.clone());
-
-                Ok(Some(Self::new(config, pty, buf)))
+                Ok(Some(Arc::new(Self::new(config, pty, buf))))
             }
 
             None => Ok(None),
@@ -40,9 +38,9 @@ impl Terminal {
     pub fn update_pty(&self, input: &WinitInputHelper) -> anyhow::Result<()> {
         let text = input
             .text()
-            .iter()
+            .into_iter()
             .map(|c| match c {
-                TextChar::Char(c) => *c,
+                TextChar::Char(c) => c,
                 TextChar::Back => '\u{8}',
             })
             .collect();
@@ -52,11 +50,21 @@ impl Terminal {
         Ok(())
     }
 
-    pub fn spawn_worker(pty: Arc<Pty>, buf: Arc<RwLock<String>>) {
+    pub fn spawn_worker(self: Arc<Self>, font: Arc<LoadedFont>) {
         thread::spawn(move || loop {
-            match pty.read() {
-                Ok(content) => *buf.write().unwrap() += content.as_str(),
-                Err(_) => break,
+            match self.pty.read() {
+                Ok(content) => {
+                    for c in content.chars() {
+                        if let Some(chr) = font.get_chr_by_id(c) {
+                            self.buf.write().unwrap().push(chr);
+                        }
+                    }
+                }
+
+                Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
+                    Some(nix::errno::Errno::EBADF) => break,
+                    _ => {}
+                },
             }
         });
     }

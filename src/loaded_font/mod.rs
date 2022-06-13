@@ -3,17 +3,17 @@ pub mod chr;
 use crate::{terminal::config::Config, SCALE};
 use chr::Chr;
 use fontdue::{Font, FontSettings};
-use std::{fs::File, io::Read, rc::Rc, sync::Arc};
+use std::{fs::File, io::Read, sync::Arc};
 use thiserror::Error;
 use vulkano::{device::Device, device::Queue};
 
 pub struct LoadedFont {
-    pub chrs: Vec<Rc<Chr>>,
+    pub chrs: Vec<Arc<Chr>>,
     pub scale: f32,
 }
 
 impl LoadedFont {
-    pub fn new(chrs: Vec<Rc<Chr>>, scale: f32) -> Self {
+    pub fn new(chrs: Vec<Arc<Chr>>, scale: f32) -> Self {
         Self { chrs, scale }
     }
 
@@ -32,7 +32,7 @@ impl LoadedFont {
         Ok(Self::new(chrs, config.font_scale * SCALE))
     }
 
-    pub fn get_chr_by_id(&self, id: char) -> Option<Rc<Chr>> {
+    pub fn get_chr_by_id(&self, id: char) -> Option<Arc<Chr>> {
         if id >= 33 as char {
             let i = id as usize - 33;
 
@@ -59,14 +59,14 @@ impl LoadedFont {
         queue: Arc<Queue>,
         font: &Font,
         scale: f32,
-    ) -> Vec<Rc<Chr>> {
+    ) -> Vec<Arc<Chr>> {
         (33..=126_u8)
             .filter_map(|i| {
                 let c = i as char;
                 let (metrics, bitmap) = font.rasterize(c, scale);
 
                 match Chr::from_bitmap(device.clone(), queue.clone(), &metrics, &bitmap) {
-                    Ok(chr) => Some(Rc::new(chr)),
+                    Ok(chr) => Some(Arc::new(chr)),
                     Err(_) => None,
                 }
             })

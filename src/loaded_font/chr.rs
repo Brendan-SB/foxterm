@@ -9,10 +9,10 @@ use std::sync::Arc;
 use vulkano::{device::Device, device::Queue, format::Format, image::ImageDimensions};
 
 pub struct Chr {
-    pub mesh: Mesh,
-    pub texture: Texture,
     pub dimensions: Vector2<f32>,
     pub bearing: Vector2<f32>,
+    pub mesh: Mesh,
+    pub texture: Texture,
 }
 
 impl Chr {
