@@ -2,15 +2,11 @@ use crate::{
     loaded_font::{chr::Chr, LoadedFont},
     mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::{pty::Pty, Terminal},
+    terminal::Terminal,
     APP_NAME,
 };
 use cgmath::{Matrix4, Vector3};
-use std::{
-    rc::Rc,
-    sync::{Arc, RwLock},
-    thread,
-};
+use std::{rc::Rc, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
     command_buffer::{
@@ -170,9 +166,6 @@ impl Renderer {
         let frag_uniform_buffer =
             CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
         let font = LoadedFont::from_file(device.clone(), queue.clone(), &terminal.config)?;
-
-        Self::spawn_terminal_worker(terminal.pty.clone(), terminal.buf.clone());
-
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -307,14 +300,6 @@ impl Renderer {
                 }
 
                 _ => {}
-            }
-        });
-    }
-
-    fn spawn_terminal_worker(pty: Arc<Pty>, buf: Arc<RwLock<String>>) {
-        thread::spawn(move || loop {
-            if let Ok(content) = pty.read() {
-                *buf.write().unwrap() += content.as_str();
             }
         });
     }

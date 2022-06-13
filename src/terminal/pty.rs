@@ -44,4 +44,16 @@ impl Pty {
 
         Ok(())
     }
+
+    pub fn close(&self) -> anyhow::Result<()> {
+        unistd::close(self.fd)?;
+
+        Ok(())
+    }
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
 }
