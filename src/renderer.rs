@@ -49,7 +49,7 @@ use winit_input_helper::WinitInputHelper;
 pub struct Renderer;
 
 impl Renderer {
-    pub fn init(physical_index: Option<usize>, terminal: Arc<Terminal>) -> anyhow::Result<()> {
+    pub fn init(terminal: Arc<Terminal>) -> anyhow::Result<()> {
         let proj = cgmath::ortho::<f32>(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
         let required_extensions = vulkano_win::required_extensions();
         let instance = Instance::new(InstanceCreateInfo {
@@ -67,7 +67,7 @@ impl Renderer {
         let (physical_device, queue_family) = {
             let mut devices = PhysicalDevice::enumerate(&instance);
 
-            match physical_index {
+            match terminal.config.device_index {
                 Some(physical_index) => {
                     let device = devices.nth(physical_index).unwrap();
 
@@ -79,6 +79,7 @@ impl Renderer {
                         .map(|q| (device, q))
                         .unwrap()
                 }
+
                 None => devices
                     .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
                     .filter_map(|p| {

@@ -17,5 +17,5 @@ fn main() {
         None => return,
     };
 
-    Renderer::init(None, terminal).unwrap();
+    Renderer::init(terminal).unwrap();
 }

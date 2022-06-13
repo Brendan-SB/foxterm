@@ -24,7 +24,7 @@ impl Terminal {
     pub fn init() -> anyhow::Result<Option<Arc<Self>>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
-                let config = Config::new([0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
+                let config = Config::new(Some(0), [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
                 let pty = pty;
                 let buf = RwLock::new(Vec::new());
 
