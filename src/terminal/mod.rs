@@ -57,7 +57,7 @@ impl Terminal {
 
     pub fn spawn_worker(self: Arc<Self>, font: Arc<LoadedFont>) {
         thread::spawn(move || loop {
-            match self.pty.read() {
+            match self.pty.read().and_then(|c| Ok(String::from_utf8(c)?)) {
                 Ok(content) => {
                     for c in content.chars() {
                         if let Some(chr) = font.get_chr_by_id(c) {

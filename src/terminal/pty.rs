@@ -29,14 +29,14 @@ impl Pty {
         }
     }
 
-    pub fn read(&self) -> anyhow::Result<String> {
+    pub fn read(&self) -> anyhow::Result<Vec<u8>> {
         let mut buffer = vec![0; BUFFER_SIZE];
 
         unistd::read(self.fd, &mut buffer)?;
 
         buffer.retain(|c| *c != 0);
 
-        Ok(String::from_utf8(buffer)?)
+        Ok(buffer)
     }
 
     pub fn write(&self, buffer: &Vec<u8>) -> anyhow::Result<()> {
