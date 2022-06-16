@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, RwLock},
     thread,
 };
+use winit::event::VirtualKeyCode;
 use winit_input_helper::{TextChar, WinitInputHelper};
 
 pub struct Terminal {
@@ -36,16 +37,20 @@ impl Terminal {
     }
 
     pub fn update_pty(&self, input: &WinitInputHelper) -> anyhow::Result<()> {
-        let text = input
+        let mut text = input
             .text()
             .into_iter()
             .map(|c| match c {
-                TextChar::Char(c) => c,
-                TextChar::Back => '\u{8}',
+                TextChar::Char(c) => c as u8,
+                TextChar::Back => '\u{8}' as u8,
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        self.pty.write(text)?;
+        if input.key_pressed(VirtualKeyCode::Return) {
+            text.push('\r' as u8);
+        }
+
+        self.pty.write(&text)?;
 
         Ok(())
     }

@@ -39,8 +39,8 @@ impl Pty {
         Ok(String::from_utf8(buffer)?)
     }
 
-    pub fn write(&self, buffer: String) -> anyhow::Result<()> {
-        unistd::write(self.fd, buffer.as_bytes())?;
+    pub fn write(&self, buffer: &Vec<u8>) -> anyhow::Result<()> {
+        unistd::write(self.fd, buffer)?;
 
         Ok(())
     }
