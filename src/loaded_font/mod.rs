@@ -32,8 +32,8 @@ impl LoadedFont {
         Ok(Self::new(chrs, config.font_scale * SCALE))
     }
 
-    pub fn get_chr_by_id(&self, id: char) -> Option<Arc<Chr>> {
-        if id >= 33 as char {
+    pub fn get_chr_by_id(&self, id: u8) -> Option<Arc<Chr>> {
+        if id >= 33 {
             let i = id as usize - 33;
 
             match self.chrs.get(i) {

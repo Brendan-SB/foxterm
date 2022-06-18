@@ -63,6 +63,8 @@ impl Terminal {
 
         if input.key_pressed(VirtualKeyCode::Return) {
             text.push('\r' as u8);
+        } else if input.key_pressed(VirtualKeyCode::Tab) {
+            text.push('\t' as u8);
         }
 
         sender.send(text)?;
@@ -72,17 +74,17 @@ impl Terminal {
 
     pub fn spawn_reader(self: Arc<Self>, font: Arc<LoadedFont>) {
         thread::spawn(move || loop {
-            match self.pty.read().and_then(|c| Ok(String::from_utf8(c)?)) {
-                Ok(content) => {
-                    let mut content = content
-                        .chars()
-                        .map(|c| match font.get_chr_by_id(c) {
+            match self.pty.read() {
+                Ok(buf) => {
+                    let buf = buf
+                        .into_iter()
+                        .map(|u| match font.get_chr_by_id(u) {
                             Some(chr) => Content::Chr(chr.clone()),
-                            None => Content::Raw(c as u8),
+                            None => Content::Raw(u),
                         })
-                        .collect();
+                        .collect::<Vec<_>>();
 
-                    self.content.write().unwrap().append(&mut content);
+                    self.content.write().unwrap().extend(buf);
                 }
 
                 Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
@@ -99,10 +101,13 @@ impl Terminal {
         let (sender, receiver) = mpsc::channel();
 
         thread::spawn(move || loop {
-            if let Ok(content) = receiver.recv() {
-                if let Err(e) = self.pty.write(&content) {
-                    println!("Error on write: {:?}", e);
+            match receiver.recv() {
+                Ok(content) => {
+                    if let Err(e) = self.pty.write(&content) {
+                        println!("Error on write: {:?}", e);
+                    }
                 }
+                Err(_) => break,
             }
         });
 
