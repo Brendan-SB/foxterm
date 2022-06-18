@@ -2,7 +2,7 @@ use crate::{
     loaded_font::{chr::Chr, LoadedFont},
     mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::Terminal,
+    terminal::{Content, Terminal},
     APP_NAME,
 };
 use cgmath::{Matrix4, Vector2};
@@ -172,7 +172,9 @@ impl Renderer {
             &terminal.config,
         )?);
 
-        terminal.clone().spawn_worker(font.clone());
+        terminal.clone().spawn_reader(font.clone());
+
+        let write_sndr = terminal.clone().spawn_writer();
 
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
@@ -195,7 +197,7 @@ impl Renderer {
                 }
 
                 Event::RedrawEventsCleared => {
-                    terminal.update_pty(&input).unwrap();
+                    terminal.update_pty(&write_sndr, &input).unwrap();
 
                     previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -261,18 +263,20 @@ impl Renderer {
 
                     let mut translation = Vector2::new(1.0 + font.scale, -1.0 - font.scale);
 
-                    for chr in &*terminal.buf.read().unwrap() {
-                        Self::draw_chr(
-                            &mut builder,
-                            pipeline.clone(),
-                            &uniform_buffer,
-                            &frag_uniform_buffer,
-                            &terminal,
-                            &mut translation,
-                            chr.clone(),
-                            font.clone(),
-                            proj,
-                        );
+                    for content in &*terminal.content.read().unwrap() {
+                        if let Content::Chr(chr) = content {
+                            Self::draw_chr(
+                                &mut builder,
+                                pipeline.clone(),
+                                &uniform_buffer,
+                                &frag_uniform_buffer,
+                                &terminal,
+                                &mut translation,
+                                chr.clone(),
+                                font.clone(),
+                                proj,
+                            );
+                        }
                     }
 
                     builder.end_render_pass().unwrap();

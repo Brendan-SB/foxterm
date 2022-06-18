@@ -11,7 +11,5 @@ layout(set = 0, binding = 1) uniform Data {
 } uniforms;
 
 void main() {
-    vec4 tex_color = texture(tex, tex_coord).r * uniforms.color;
-
-    f_color = tex_color;
+    f_color = texture(tex, tex_coord).r * uniforms.color;
 }
