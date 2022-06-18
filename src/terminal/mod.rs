@@ -34,7 +34,6 @@ impl Terminal {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
                 let config = Config::new(Some(0), [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
-                let pty = pty;
 
                 Ok(Some(Arc::new(Self::new(
                     config,
@@ -42,7 +41,6 @@ impl Terminal {
                     RwLock::new(Vec::new()),
                 ))))
             }
-
             None => Ok(None),
         }
     }
@@ -65,6 +63,10 @@ impl Terminal {
             text.push('\r' as u8);
         } else if input.key_pressed(VirtualKeyCode::Tab) {
             text.push('\t' as u8);
+        } else if input.key_pressed(VirtualKeyCode::LControl)
+            || input.key_pressed(VirtualKeyCode::RControl)
+        {
+            text.push('^' as u8);
         }
 
         sender.send(text)?;
@@ -86,10 +88,9 @@ impl Terminal {
 
                     self.content.write().unwrap().extend(buf);
                 }
-
                 Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
                     Some(nix::errno::Errno::EBADF) => break,
-                    e => {
+                    _ => {
                         println!("Error on read: {:?}", e);
                     }
                 },
@@ -104,7 +105,12 @@ impl Terminal {
             match receiver.recv() {
                 Ok(content) => {
                     if let Err(e) = self.pty.write(&content) {
-                        println!("Error on write: {:?}", e);
+                        match e.downcast_ref::<nix::errno::Errno>() {
+                            Some(nix::errno::Errno::EBADF) => break,
+                            _ => {
+                                println!("Error on write: {:?}", e);
+                            }
+                        }
                     }
                 }
                 Err(_) => break,

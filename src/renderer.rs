@@ -79,7 +79,6 @@ impl Renderer {
                         .map(|q| (device, q))
                         .unwrap()
                 }
-
                 None => devices
                     .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
                     .filter_map(|p| {
@@ -188,14 +187,12 @@ impl Renderer {
                     event: WindowEvent::CloseRequested,
                     ..
                 } => *control_flow = ControlFlow::Exit,
-
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
                     ..
                 } => {
                     recreate_swapchain = true;
                 }
-
                 Event::RedrawEventsCleared => {
                     terminal.update_pty(&write_sndr, &input).unwrap();
 
@@ -295,12 +292,10 @@ impl Renderer {
                         Ok(future) => {
                             previous_frame_end = Some(future.boxed());
                         }
-
                         Err(FlushError::OutOfDate) => {
                             recreate_swapchain = true;
                             previous_frame_end = Some(sync::now(device.clone()).boxed());
                         }
-
                         Err(e) => {
                             println!("Failed to flush future: {:?}", e);
 
@@ -308,7 +303,6 @@ impl Renderer {
                         }
                     }
                 }
-
                 _ => {}
             }
         });

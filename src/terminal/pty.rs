@@ -20,7 +20,6 @@ impl Pty {
 
         match fork_pty.fork_result {
             ForkResult::Parent { .. } => Ok(Some(Self::new(fork_pty.master))),
-
             ForkResult::Child => {
                 let _ = Command::new(&shell_path).status()?;
 
