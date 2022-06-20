@@ -12,7 +12,11 @@ pub struct Texture {
 }
 
 impl Texture {
-    pub fn new(
+    pub fn new(image: Arc<ImageView<ImmutableImage>>, sampler: Arc<Sampler>) -> Self {
+        Self { image, sampler }
+    }
+
+    pub fn from_data(
         device: Arc<Device>,
         queue: Arc<Queue>,
         format: Format,
@@ -39,6 +43,6 @@ impl Texture {
         )?;
         let image = ImageView::new_default(image)?;
 
-        Ok(Self { image, sampler })
+        Ok(Self::new(image, sampler))
     }
 }

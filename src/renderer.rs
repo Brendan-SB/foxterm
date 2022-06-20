@@ -138,13 +138,13 @@ impl Renderer {
             attachments: {
                 color: {
                     load: Clear,
-                    store: Store,
+                    store: DontCare,
                     format: swapchain.image_format(),
                     samples: 1,
                 },
                 depth: {
                     load: Clear,
-                    store: Store,
+                    store: DontCare,
                     format: Format::D16_UNORM,
                     samples: 1,
                 }
@@ -162,9 +162,9 @@ impl Renderer {
             &images,
         )?;
         let uniform_buffer =
-            CpuBufferPool::<vertex::ty::Data>::new(device.clone(), BufferUsage::all());
+            CpuBufferPool::<vertex::ty::Data>::new(device.clone(), BufferUsage::uniform_buffer());
         let frag_uniform_buffer =
-            CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::all());
+            CpuBufferPool::<fragment::ty::Data>::new(device.clone(), BufferUsage::uniform_buffer());
         let font = Arc::new(LoadedFont::from_file(
             device.clone(),
             queue.clone(),
@@ -174,6 +174,10 @@ impl Renderer {
         terminal.clone().spawn_reader(font.clone());
 
         let write_sndr = terminal.clone().spawn_writer();
+        #[cfg(debug_assertions)]
+        let guard = pprof::ProfilerGuardBuilder::default()
+            .frequency(1000)
+            .build()?;
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -185,7 +189,18 @@ impl Renderer {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
-                } => *control_flow = ControlFlow::Exit,
+                } => {
+                    #[cfg(debug_assertions)]
+                    if let Ok(report) = guard.report().build() {
+                        let file = std::fs::File::create("flamegraph.svg").unwrap();
+                        let mut options = pprof::flamegraph::Options::default();
+
+                        options.image_width = Some(5000);
+                        report.flamegraph_with_options(file, &mut options).unwrap();
+                    };
+
+                    *control_flow = ControlFlow::Exit;
+                }
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
                     ..
@@ -301,6 +316,7 @@ impl Renderer {
         });
     }
 
+    #[inline]
     fn draw_item(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -350,7 +366,7 @@ impl Renderer {
                 PipelineBindPoint::Graphics,
                 pipeline.layout().clone(),
                 0,
-                vec![set.clone()],
+                set.clone(),
             )
             .bind_vertex_buffers(0, drawable.chr.mesh.vertices.clone())
             .bind_index_buffer(drawable.chr.mesh.indices.clone())

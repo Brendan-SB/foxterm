@@ -1,8 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    device::Device,
+    buffer::{BufferUsage, ImmutableBuffer},
+    device::Queue,
 };
 
 #[repr(C)]
@@ -15,25 +15,31 @@ pub struct Vertex {
 vulkano::impl_vertex!(Vertex, position, uv);
 
 pub struct Mesh {
-    pub vertices: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pub indices: Arc<CpuAccessibleBuffer<[u32]>>,
+    pub vertices: Arc<ImmutableBuffer<[Vertex]>>,
+    pub indices: Arc<ImmutableBuffer<[u32]>>,
 }
 
 impl Mesh {
-    pub fn new(device: Arc<Device>, vertices: &[Vertex], indices: &[u32]) -> anyhow::Result<Self> {
-        let vertices = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            vertices.iter().cloned(),
-        )?;
-        let indices = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            indices.iter().cloned(),
-        )?;
+    pub fn new(
+        vertices: Arc<ImmutableBuffer<[Vertex]>>,
+        indices: Arc<ImmutableBuffer<[u32]>>,
+    ) -> Self {
+        Self { vertices, indices }
+    }
 
-        Ok(Self { vertices, indices })
+    pub fn from_data(
+        queue: Arc<Queue>,
+        vertices: &[Vertex],
+        indices: &[u32],
+    ) -> anyhow::Result<Self> {
+        let (vertices, _) = ImmutableBuffer::from_iter(
+            vertices.iter().cloned(),
+            BufferUsage::vertex_buffer(),
+            queue.clone(),
+        )?;
+        let (indices, _) =
+            ImmutableBuffer::from_iter(indices.iter().cloned(), BufferUsage::index_buffer(), queue.clone())?;
+
+        Ok(Self::new(vertices, indices))
     }
 }

@@ -8,6 +8,8 @@ use fontdue::Metrics;
 use std::sync::Arc;
 use vulkano::{device::Device, device::Queue, format::Format, image::ImageDimensions};
 
+pub const INDICES: &[u32] = &[0, 1, 2, 1, 2, 3];
+
 pub struct Chr {
     pub dimensions: Vector2<f32>,
     pub bearing: Vector2<f32>,
@@ -38,13 +40,13 @@ impl Chr {
     ) -> anyhow::Result<Self> {
         let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) * SCALE;
         let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) * SCALE;
-        let mesh = Self::create_mesh(device.clone(), dimensions)?;
+        let mesh = Self::create_mesh(queue.clone(), dimensions)?;
         let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
 
         Ok(Self::new(dimensions, bearing, mesh, texture))
     }
 
-    fn create_mesh(device: Arc<Device>, dimensions: Vector2<f32>) -> anyhow::Result<Mesh> {
+    fn create_mesh(queue: Arc<Queue>, dimensions: Vector2<f32>) -> anyhow::Result<Mesh> {
         let vertices = {
             [
                 Vertex {
@@ -65,8 +67,7 @@ impl Chr {
                 },
             ]
         };
-        let indices = [0, 1, 2, 1, 2, 3];
-        let mesh = Mesh::new(device.clone(), &vertices, &indices)?;
+        let mesh = Mesh::from_data(queue.clone(), &vertices, &INDICES)?;
 
         Ok(mesh)
     }
@@ -75,14 +76,14 @@ impl Chr {
         device: Arc<Device>,
         queue: Arc<Queue>,
         metrics: &Metrics,
-        bitmap: &Vec<u8>,
+        bitmap: &[u8],
     ) -> anyhow::Result<Texture> {
         let dims = ImageDimensions::Dim2d {
             width: metrics.width as u32,
             height: metrics.height as u32,
             array_layers: 1,
         };
-        let texture = Texture::new(device, queue, Format::R8_SRGB, dims, bitmap)?;
+        let texture = Texture::from_data(device, queue, Format::R8_SRGB, dims, bitmap)?;
 
         Ok(texture)
     }
