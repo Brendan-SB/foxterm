@@ -174,10 +174,6 @@ impl Renderer {
         terminal.clone().spawn_reader(font.clone());
 
         let write_sndr = terminal.clone().spawn_writer();
-        #[cfg(debug_assertions)]
-        let guard = pprof::ProfilerGuardBuilder::default()
-            .frequency(1000)
-            .build()?;
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -189,24 +185,11 @@ impl Renderer {
                 Event::WindowEvent {
                     event: WindowEvent::CloseRequested,
                     ..
-                } => {
-                    #[cfg(debug_assertions)]
-                    if let Ok(report) = guard.report().build() {
-                        let file = std::fs::File::create("flamegraph.svg").unwrap();
-                        let mut options = pprof::flamegraph::Options::default();
-
-                        options.image_width = Some(5000);
-                        report.flamegraph_with_options(file, &mut options).unwrap();
-                    };
-
-                    *control_flow = ControlFlow::Exit;
-                }
+                } => *control_flow = ControlFlow::Exit,
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
                     ..
-                } => {
-                    recreate_swapchain = true;
-                }
+                } => recreate_swapchain = true,
                 Event::RedrawEventsCleared => {
                     terminal.update_pty(&write_sndr, &input).unwrap();
 
@@ -374,6 +357,7 @@ impl Renderer {
             .unwrap();
     }
 
+    #[inline]
     fn window_size_dependent_setup(
         render_pass: Arc<RenderPass>,
         device: Arc<Device>,
