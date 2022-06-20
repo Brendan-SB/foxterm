@@ -174,7 +174,6 @@ impl Renderer {
         terminal.clone().spawn_reader(font.clone());
 
         let write_sndr = terminal.clone().spawn_writer();
-
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
