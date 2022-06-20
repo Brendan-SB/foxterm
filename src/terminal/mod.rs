@@ -1,8 +1,11 @@
 pub mod config;
+pub mod drawable;
 pub mod pty;
 
-use crate::loaded_font::{chr::Chr, LoadedFont};
+use crate::loaded_font::LoadedFont;
+use cgmath::Vector2;
 use config::Config;
+use drawable::Drawable;
 use pty::Pty;
 use std::{
     env,
@@ -18,22 +21,22 @@ use winit_input_helper::{TextChar, WinitInputHelper};
 pub struct Terminal {
     pub config: Config,
     pub pty: Pty,
-    pub content: RwLock<Vec<Content>>,
+    pub screen: RwLock<Vec<Drawable>>,
 }
 
 impl Terminal {
-    pub fn new(config: Config, pty: Pty, content: RwLock<Vec<Content>>) -> Self {
+    pub fn new(config: Config, pty: Pty, screen: RwLock<Vec<Drawable>>) -> Self {
         Self {
             config,
             pty,
-            content,
+            screen,
         }
     }
 
     pub fn init() -> anyhow::Result<Option<Arc<Self>>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
-                let config = Config::new(Some(0), [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
+                let config = Config::new(None, [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
 
                 Ok(Some(Arc::new(Self::new(
                     config,
@@ -78,15 +81,32 @@ impl Terminal {
         thread::spawn(move || loop {
             match self.pty.read() {
                 Ok(buf) => {
-                    let buf = buf
-                        .into_iter()
-                        .map(|u| match font.get_chr_by_id(u) {
-                            Some(chr) => Content::Chr(chr.clone()),
-                            None => Content::Raw(u),
-                        })
-                        .collect::<Vec<_>>();
+                    let mut screen = self.screen.write().unwrap();
 
-                    self.content.write().unwrap().extend(buf);
+                    for u in buf {
+                        if let Some(chr) = font.get_chr_by_id(u) {
+                            let drawable = match screen.last() {
+                                Some(drawable) => {
+                                    let pos = {
+                                        let x = drawable.pos.x
+                                            + drawable.chr.dimensions.x
+                                            + chr.bearing.x;
+
+                                        if x >= 1.0 {
+                                            Vector2::new(-1.0, drawable.pos.y + font.scale)
+                                        } else {
+                                            Vector2::new(x, drawable.pos.y)
+                                        }
+                                    };
+
+                                    Drawable::new(chr, pos)
+                                }
+                                None => Drawable::new(chr, Vector2::new(1.0, -1.0 - font.scale)),
+                            };
+
+                            screen.push(drawable);
+                        }
+                    }
                 }
                 Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
                     Some(nix::errno::Errno::EBADF) => break,
@@ -119,9 +139,4 @@ impl Terminal {
 
         sender
     }
-}
-
-pub enum Content {
-    Chr(Arc<Chr>),
-    Raw(u8),
 }

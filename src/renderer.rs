@@ -1,11 +1,11 @@
 use crate::{
-    loaded_font::{chr::Chr, LoadedFont},
+    loaded_font::LoadedFont,
     mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::{Content, Terminal},
+    terminal::{drawable::Drawable, Terminal},
     APP_NAME,
 };
-use cgmath::{Matrix4, Vector2};
+use cgmath::Matrix4;
 use std::sync::Arc;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
@@ -258,22 +258,16 @@ impl Renderer {
                         )
                         .unwrap();
 
-                    let mut translation = Vector2::new(1.0 + font.scale, -1.0 - font.scale);
-
-                    for content in &*terminal.content.read().unwrap() {
-                        if let Content::Chr(chr) = content {
-                            Self::draw_chr(
-                                &mut builder,
-                                pipeline.clone(),
-                                &uniform_buffer,
-                                &frag_uniform_buffer,
-                                &terminal,
-                                &mut translation,
-                                chr.clone(),
-                                font.clone(),
-                                proj,
-                            );
-                        }
+                    for drawable in &*terminal.screen.read().unwrap() {
+                        Self::draw_item(
+                            &mut builder,
+                            pipeline.clone(),
+                            &uniform_buffer,
+                            &frag_uniform_buffer,
+                            &terminal,
+                            drawable,
+                            proj,
+                        );
                     }
 
                     builder.end_render_pass().unwrap();
@@ -308,7 +302,7 @@ impl Renderer {
         });
     }
 
-    fn draw_chr(
+    fn draw_item(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
             StandardCommandPoolBuilder,
@@ -317,32 +311,17 @@ impl Renderer {
         uniform_buffer: &CpuBufferPool<vertex::ty::Data>,
         frag_uniform_buffer: &CpuBufferPool<fragment::ty::Data>,
         terminal: &Terminal,
-        translation: &mut Vector2<f32>,
-        chr: Arc<Chr>,
-        font: Arc<LoadedFont>,
+        drawable: &Drawable,
         proj: Matrix4<f32>,
     ) {
-        translation.x += chr.bearing.x;
-
-        if translation.x >= 1.0 {
-            translation.x = -1.0;
-            translation.y += font.scale;
-        }
-
         let uniform_buffer_subbuffer = {
             let uniform_data = vertex::ty::Data {
                 proj: proj.into(),
-                transform: Matrix4::from_translation(
-                    (*translation - Vector2::new(0.0, chr.bearing.y)).extend(0.0),
-                )
-                .into(),
+                transform: Matrix4::from_translation(drawable.pos.extend(0.0)).into(),
             };
 
             Arc::new(uniform_buffer.next(uniform_data).unwrap())
         };
-
-        translation.x += chr.dimensions.x;
-
         let frag_uniform_buffer_subbuffer = {
             let uniform_data = fragment::ty::Data {
                 color: terminal.config.font_color.into(),
@@ -359,8 +338,8 @@ impl Renderer {
                 WriteDescriptorSet::buffer(1, frag_uniform_buffer_subbuffer),
                 WriteDescriptorSet::image_view_sampler(
                     2,
-                    chr.texture.image.clone(),
-                    chr.texture.sampler.clone(),
+                    drawable.chr.texture.image.clone(),
+                    drawable.chr.texture.sampler.clone(),
                 ),
             ],
         )
@@ -374,9 +353,9 @@ impl Renderer {
                 0,
                 vec![set.clone()],
             )
-            .bind_vertex_buffers(0, chr.mesh.vertices.clone())
-            .bind_index_buffer(chr.mesh.indices.clone())
-            .draw_indexed(chr.mesh.indices.len() as u32, 1, 0, 0, 0)
+            .bind_vertex_buffers(0, drawable.chr.mesh.vertices.clone())
+            .bind_index_buffer(drawable.chr.mesh.indices.clone())
+            .draw_indexed(drawable.chr.mesh.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
     }
 
