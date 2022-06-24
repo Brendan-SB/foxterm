@@ -49,7 +49,7 @@ use winit_input_helper::WinitInputHelper;
 pub struct Renderer;
 
 impl Renderer {
-    pub fn init(terminal: Arc<Terminal>) -> anyhow::Result<()> {
+    pub fn init(terminal: Terminal) -> anyhow::Result<()> {
         let proj = cgmath::ortho::<f32>(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
         let required_extensions = vulkano_win::required_extensions();
         let instance = Instance::new(InstanceCreateInfo {
@@ -171,9 +171,9 @@ impl Renderer {
             &terminal.config,
         )?);
 
-        terminal.clone().spawn_reader(font.clone());
+        terminal.spawn_reader(font.clone());
 
-        let write_sndr = terminal.clone().spawn_writer();
+        let write_sndr = terminal.spawn_writer();
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());

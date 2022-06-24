@@ -2,7 +2,7 @@ use nix::{
     pty,
     unistd::{self, ForkResult},
 };
-use std::{os::unix::io::RawFd, process::Command};
+use std::{os::unix::io::RawFd, process::Command, sync::Arc};
 
 pub const BUFFER_SIZE: usize = 65536;
 
@@ -15,11 +15,11 @@ impl Pty {
         Self { fd }
     }
 
-    pub fn spawn(shell_path: String) -> anyhow::Result<Option<Self>> {
+    pub fn spawn(shell_path: String) -> anyhow::Result<Option<Arc<Self>>> {
         let fork_pty = unsafe { pty::forkpty(None, None)? };
 
         match fork_pty.fork_result {
-            ForkResult::Parent { .. } => Ok(Some(Self::new(fork_pty.master))),
+            ForkResult::Parent { .. } => Ok(Some(Arc::new(Self::new(fork_pty.master)))),
             ForkResult::Child => {
                 let _ = Command::new(&shell_path).status()?;
 

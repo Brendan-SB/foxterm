@@ -3,7 +3,7 @@ pub mod drawable;
 pub mod pty;
 
 use crate::loaded_font::LoadedFont;
-use cgmath::Vector2;
+use cgmath::{Vector2, Vector4, Zero};
 use config::Config;
 use drawable::Drawable;
 use pty::Pty;
@@ -15,17 +15,18 @@ use std::{
     },
     thread,
 };
+use vte::{Params, Parser, Perform};
 use winit::event::VirtualKeyCode;
 use winit_input_helper::{TextChar, WinitInputHelper};
 
 pub struct Terminal {
     pub config: Config,
-    pub pty: Pty,
-    pub screen: RwLock<Vec<Drawable>>,
+    pub pty: Arc<Pty>,
+    pub screen: Arc<RwLock<Vec<Drawable>>>,
 }
 
 impl Terminal {
-    pub fn new(config: Config, pty: Pty, screen: RwLock<Vec<Drawable>>) -> Self {
+    pub fn new(config: Config, pty: Arc<Pty>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
         Self {
             config,
             pty,
@@ -33,16 +34,16 @@ impl Terminal {
         }
     }
 
-    pub fn init() -> anyhow::Result<Option<Arc<Self>>> {
+    pub fn init() -> anyhow::Result<Option<Self>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
                 let config = Config::new(None, [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
 
-                Ok(Some(Arc::new(Self::new(
+                Ok(Some(Self::new(
                     config,
                     pty,
-                    RwLock::new(Vec::new()),
-                ))))
+                    Arc::new(RwLock::new(Vec::new())),
+                )))
             }
             None => Ok(None),
         }
@@ -77,35 +78,19 @@ impl Terminal {
         Ok(())
     }
 
-    pub fn spawn_reader(self: Arc<Self>, font: Arc<LoadedFont>) {
+    pub fn spawn_reader(&self, font: Arc<LoadedFont>) {
+        let pty = self.pty.clone();
+        let screen = self.screen.clone();
+
         thread::spawn(move || loop {
-            match self.pty.read() {
+            match pty.read() {
                 Ok(buf) => {
-                    let mut screen = self.screen.write().unwrap();
+                    let mut screen = screen.write().unwrap();
+                    let mut performer = Performer::default(font.clone(), &mut screen);
+                    let mut parser = Parser::new();
 
                     for u in buf {
-                        if let Some(chr) = font.get_chr_by_id(u) {
-                            let drawable = match screen.last() {
-                                Some(drawable) => {
-                                    let pos = {
-                                        let x = drawable.pos.x
-                                            + drawable.chr.dimensions.x
-                                            + chr.bearing.x;
-
-                                        if x >= 1.0 {
-                                            Vector2::new(-1.0, drawable.pos.y + font.scale)
-                                        } else {
-                                            Vector2::new(x, drawable.pos.y)
-                                        }
-                                    };
-
-                                    Drawable::new(chr, pos)
-                                }
-                                None => Drawable::new(chr, Vector2::new(1.0, -1.0 - font.scale)),
-                            };
-
-                            screen.push(drawable);
-                        }
+                        parser.advance(&mut performer, u);
                     }
                 }
                 Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
@@ -118,13 +103,14 @@ impl Terminal {
         });
     }
 
-    pub fn spawn_writer(self: Arc<Self>) -> Sender<Vec<u8>> {
+    pub fn spawn_writer(&self) -> Sender<Vec<u8>> {
         let (sender, receiver) = mpsc::channel();
+        let pty = self.pty.clone();
 
         thread::spawn(move || loop {
             match receiver.recv() {
                 Ok(content) => {
-                    if let Err(e) = self.pty.write(&content) {
+                    if let Err(e) = pty.write(&content) {
                         match e.downcast_ref::<nix::errno::Errno>() {
                             Some(nix::errno::Errno::EBADF) => break,
                             _ => {
@@ -138,5 +124,71 @@ impl Terminal {
         });
 
         sender
+    }
+}
+
+struct Performer<'a> {
+    font: Arc<LoadedFont>,
+    screen: &'a mut Vec<Drawable>,
+    color: Vector4<f32>,
+    advance: u16,
+}
+
+impl<'a> Performer<'a> {
+    fn new(
+        font: Arc<LoadedFont>,
+        screen: &'a mut Vec<Drawable>,
+        color: Vector4<f32>,
+        advance: u16,
+    ) -> Self {
+        Self {
+            font,
+            screen,
+            color,
+            advance,
+        }
+    }
+
+    fn default(font: Arc<LoadedFont>, screen: &'a mut Vec<Drawable>) -> Self {
+        Self::new(font, screen, Vector4::zero(), 0)
+    }
+}
+
+impl<'a> Perform for Performer<'a> {
+    fn print(&mut self, c: char) {
+        if let Some(chr) = self.font.get_chr_by_id(c as u8) {
+            let drawable = match self.screen.last() {
+                Some(drawable) => {
+                    let pos = {
+                        let x = drawable.pos.x + drawable.chr.dimensions.x + chr.bearing.x;
+
+                        if x >= 1.0 {
+                            Vector2::new(-1.0, drawable.pos.y + self.font.scale)
+                        } else {
+                            Vector2::new(x, drawable.pos.y)
+                        }
+                    };
+
+                    Drawable::new(chr, pos)
+                }
+                None => Drawable::new(chr, Vector2::new(1.0, -1.0 - self.font.scale)),
+            };
+
+            self.screen.push(drawable);
+        }
+    }
+
+    fn csi_dispatch(
+        &mut self,
+        params: &Params,
+        _intermediates: &[u8],
+        _ignore: bool,
+        action: char,
+    ) {
+        if action == 'C' {
+            if let Some(param) = params.iter().nth(0) {
+                self.advance = param[0] as u16;
+            }
+        }
     }
 }

@@ -11,6 +11,7 @@ use vulkano::{device::Device, device::Queue, format::Format, image::ImageDimensi
 pub const INDICES: &[u32] = &[0, 1, 2, 1, 2, 3];
 
 pub struct Chr {
+    pub id: u8,
     pub dimensions: Vector2<f32>,
     pub bearing: Vector2<f32>,
     pub mesh: Mesh,
@@ -19,12 +20,14 @@ pub struct Chr {
 
 impl Chr {
     pub fn new(
+        id: u8,
         dimensions: Vector2<f32>,
         bearing: Vector2<f32>,
         mesh: Mesh,
         texture: Texture,
     ) -> Self {
         Self {
+            id,
             dimensions,
             bearing,
             mesh,
@@ -33,6 +36,7 @@ impl Chr {
     }
 
     pub fn from_bitmap(
+        id: u8,
         device: Arc<Device>,
         queue: Arc<Queue>,
         metrics: &Metrics,
@@ -43,7 +47,7 @@ impl Chr {
         let mesh = Self::create_mesh(queue.clone(), dimensions)?;
         let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
 
-        Ok(Self::new(dimensions, bearing, mesh, texture))
+        Ok(Self::new(id, dimensions, bearing, mesh, texture))
     }
 
     fn create_mesh(queue: Arc<Queue>, dimensions: Vector2<f32>) -> anyhow::Result<Mesh> {
