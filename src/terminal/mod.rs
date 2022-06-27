@@ -163,7 +163,7 @@ impl Perform for Performer {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
             let mut screen = self.screen.write().unwrap();
 
-            self.pos.x += chr.bearing.x; 
+            self.pos.x += chr.bearing.x;
 
             {
                 let mut pos = self.pos;
@@ -182,11 +182,12 @@ impl Perform for Performer {
             if self.pos.y >= 1.0 {
                 self.pos.y = 1.0 - self.font.scale;
 
-                for mut d in &mut *screen {
+                screen.retain_mut(|d| {
                     d.pos.y -= self.font.scale;
-                }
-            }
 
+                    d.pos.y > -1.0
+                });
+            }
         }
     }
 
