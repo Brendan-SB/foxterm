@@ -81,12 +81,11 @@ impl Terminal {
     pub fn spawn_reader(&self, font: Arc<LoadedFont>) {
         let pty = self.pty.clone();
         let screen = self.screen.clone();
+        let mut performer = Performer::default(font.clone(), screen.clone());
 
         thread::spawn(move || loop {
             match pty.read() {
                 Ok(buf) => {
-                    let mut screen = screen.write().unwrap();
-                    let mut performer = Performer::default(font.clone(), &mut screen);
                     let mut parser = Parser::new();
 
                     for u in buf {
@@ -127,54 +126,50 @@ impl Terminal {
     }
 }
 
-struct Performer<'a> {
+struct Performer {
     font: Arc<LoadedFont>,
-    screen: &'a mut Vec<Drawable>,
+    screen: Arc<RwLock<Vec<Drawable>>>,
     color: Vector4<f32>,
-    advance: u16,
+    pos: Vector2<f32>,
 }
 
-impl<'a> Performer<'a> {
+impl Performer {
     fn new(
         font: Arc<LoadedFont>,
-        screen: &'a mut Vec<Drawable>,
+        screen: Arc<RwLock<Vec<Drawable>>>,
         color: Vector4<f32>,
-        advance: u16,
+        pos: Vector2<f32>,
     ) -> Self {
         Self {
             font,
             screen,
             color,
-            advance,
+            pos,
         }
     }
 
-    fn default(font: Arc<LoadedFont>, screen: &'a mut Vec<Drawable>) -> Self {
-        Self::new(font, screen, Vector4::zero(), 0)
+    fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
+        Self::new(
+            font.clone(),
+            screen,
+            Vector4::zero(),
+            Vector2::new(-1.0, -1.0),
+        )
     }
 }
 
-impl<'a> Perform for Performer<'a> {
+impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
-            let drawable = match self.screen.last() {
-                Some(drawable) => {
-                    let pos = {
-                        let x = drawable.pos.x + drawable.chr.dimensions.x + chr.bearing.x;
+            self.pos.x += chr.bearing.x;
 
-                        if x >= 1.0 {
-                            Vector2::new(-1.0, drawable.pos.y + self.font.scale)
-                        } else {
-                            Vector2::new(x, drawable.pos.y)
-                        }
-                    };
+            let pos = self.pos + Vector2::new(0.0, -chr.bearing.y);
 
-                    Drawable::new(chr, pos)
-                }
-                None => Drawable::new(chr, Vector2::new(1.0, -1.0 - self.font.scale)),
-            };
-
-            self.screen.push(drawable);
+            self.pos.x += chr.dimensions.x;
+            self.screen
+                .write()
+                .unwrap()
+                .push(Drawable::new(chr.clone(), pos))
         }
     }
 
@@ -185,10 +180,17 @@ impl<'a> Perform for Performer<'a> {
         _ignore: bool,
         action: char,
     ) {
-        if action == 'C' {
-            if let Some(param) = params.iter().nth(0) {
-                self.advance = param[0] as u16;
-            }
+        match action {
+            'C' => {}
+            'K' => match params.iter().nth(0).and_then(|p| Some(p[0])) {
+                Some(0) => {
+                    self.pos.x = -1.0;
+                    self.pos.y += self.font.scale;
+                }
+                Some(_) => {}
+                None => {}
+            },
+            _ => {}
         }
     }
 }
