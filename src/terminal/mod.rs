@@ -161,21 +161,11 @@ impl Performer {
 impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
-            let mut screen = self.screen.write().unwrap();
-
             self.pos.x += chr.bearing.x;
 
-            {
-                let mut pos = self.pos;
+            let mut screen = self.screen.write().unwrap();
 
-                pos.y -= chr.bearing.y;
-
-                screen.push(Drawable::new(chr.clone(), pos));
-            }
-
-            self.pos.x += chr.dimensions.x;
-
-            if (self.pos.x * 50.0).round() / 50.0 >= 1.0 {
+            if self.pos.x >= 1.0 {
                 self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
             }
 
@@ -188,6 +178,16 @@ impl Perform for Performer {
                     d.pos.y > -1.0
                 });
             }
+
+            {
+                let mut pos = self.pos;
+
+                pos.y += chr.bearing.y;
+
+                screen.push(Drawable::new(chr.clone(), pos));
+            }
+
+            self.pos.x += chr.dimensions.x;
         }
     }
 
