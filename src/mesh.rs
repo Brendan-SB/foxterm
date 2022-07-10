@@ -1,4 +1,5 @@
 use bytemuck::{Pod, Zeroable};
+use cgmath::Vector2;
 use std::sync::Arc;
 use vulkano::{
     buffer::{BufferUsage, ImmutableBuffer},
@@ -44,5 +45,32 @@ impl Mesh {
         )?;
 
         Ok(Self::new(vertices, indices))
+    }
+
+    pub fn from_rect(queue: Arc<Queue>, dimensions: Vector2<f32>) -> anyhow::Result<Self> {
+        const INDICES: &[u32] = &[0, 1, 2, 1, 2, 3];
+
+        let vertices = {
+            [
+                Vertex {
+                    uv: [0.0, 0.0],
+                    position: [0.0, 0.0, 0.0],
+                },
+                Vertex {
+                    uv: [0.0, 1.0],
+                    position: [0.0, dimensions.y, 0.0],
+                },
+                Vertex {
+                    uv: [1.0, 0.0],
+                    position: [dimensions.x, 0.0, 0.0],
+                },
+                Vertex {
+                    uv: [1.0, 1.0],
+                    position: [dimensions.x, dimensions.y, 0.0],
+                },
+            ]
+        };
+
+        Self::from_data(queue, &vertices, INDICES)
     }
 }

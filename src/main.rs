@@ -1,3 +1,4 @@
+mod item;
 mod loaded_font;
 mod mesh;
 mod renderer;

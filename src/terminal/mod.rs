@@ -5,14 +5,12 @@ pub mod pty;
 use crate::loaded_font::LoadedFont;
 use cgmath::{Vector2, Vector4, Zero};
 use config::Config;
+use crossbeam::channel::{self, Sender};
 use drawable::Drawable;
 use pty::Pty;
 use std::{
     env,
-    sync::{
-        mpsc::{self, Sender},
-        Arc, RwLock,
-    },
+    sync::{Arc, RwLock},
     thread,
 };
 use vte::{Params, Parser, Perform};
@@ -78,32 +76,41 @@ impl Terminal {
         Ok(())
     }
 
-    pub fn spawn_reader(&self, font: Arc<LoadedFont>) {
+    pub fn spawn_reader(&self, font: Arc<LoadedFont>) -> Arc<RwLock<Performer>> {
         let pty = self.pty.clone();
         let screen = self.screen.clone();
-        let mut performer = Performer::default(font.clone(), screen.clone());
+        let performer = Arc::new(RwLock::new(Performer::default(
+            font.clone(),
+            screen.clone(),
+        )));
 
-        thread::spawn(move || loop {
-            match pty.read() {
-                Ok(buf) => {
-                    let mut parser = Parser::new();
+        {
+            let performer = performer.clone();
 
-                    for u in buf {
-                        parser.advance(&mut performer, u);
+            thread::spawn(move || loop {
+                match pty.read() {
+                    Ok(buf) => {
+                        let mut parser = Parser::new();
+
+                        for u in buf {
+                            parser.advance(&mut *performer.write().unwrap(), u);
+                        }
                     }
+                    Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
+                        Some(nix::errno::Errno::EBADF) => break,
+                        _ => {
+                            println!("Error on read: {:?}", e);
+                        }
+                    },
                 }
-                Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
-                    Some(nix::errno::Errno::EBADF) => break,
-                    _ => {
-                        println!("Error on read: {:?}", e);
-                    }
-                },
-            }
-        });
+            });
+        }
+
+        performer
     }
 
     pub fn spawn_writer(&self) -> Sender<Vec<u8>> {
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = channel::unbounded();
         let pty = self.pty.clone();
 
         thread::spawn(move || loop {
@@ -126,15 +133,15 @@ impl Terminal {
     }
 }
 
-struct Performer {
-    font: Arc<LoadedFont>,
-    screen: Arc<RwLock<Vec<Drawable>>>,
-    color: Vector4<f32>,
-    pos: Vector2<f32>,
+pub struct Performer {
+    pub font: Arc<LoadedFont>,
+    pub screen: Arc<RwLock<Vec<Drawable>>>,
+    pub color: Vector4<f32>,
+    pub pos: Vector2<f32>,
 }
 
 impl Performer {
-    fn new(
+    pub fn new(
         font: Arc<LoadedFont>,
         screen: Arc<RwLock<Vec<Drawable>>>,
         color: Vector4<f32>,
@@ -148,7 +155,7 @@ impl Performer {
         }
     }
 
-    fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
+    pub fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
         Self::new(
             font.clone(),
             screen,
@@ -161,9 +168,19 @@ impl Performer {
 impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
+            let mut screen = self.screen.write().unwrap();
+
             self.pos.x += chr.bearing.x;
 
-            let mut screen = self.screen.write().unwrap();
+            {
+                let mut pos = self.pos;
+
+                pos.y += chr.bearing.y;
+
+                screen.push(Drawable::new(chr.clone(), pos));
+            }
+
+            self.pos.x += chr.dimensions.x;
 
             if self.pos.x >= 1.0 {
                 self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
@@ -178,16 +195,6 @@ impl Perform for Performer {
                     d.pos.y > -1.0
                 });
             }
-
-            {
-                let mut pos = self.pos;
-
-                pos.y += chr.bearing.y;
-
-                screen.push(Drawable::new(chr.clone(), pos));
-            }
-
-            self.pos.x += chr.dimensions.x;
         }
     }
 
@@ -199,13 +206,11 @@ impl Perform for Performer {
         action: char,
     ) {
         match action {
-            'K' => match params.iter().nth(0) {
-                Some([0]) => {
-                    self.pos.x = -1.0;
-                    self.pos.y += self.font.scale;
+            'K' => match params.iter().next() {
+                Some([0] | []) => {
+                    self.pos.x = 1.0 - self.font.scale;
                 }
-                Some(_) => {}
-                None => {}
+                _ => {}
             },
             _ => {}
         }

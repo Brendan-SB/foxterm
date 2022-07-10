@@ -45,4 +45,18 @@ impl Texture {
 
         Ok(Self::new(image, sampler))
     }
+
+    pub fn white(device: Arc<Device>, queue: Arc<Queue>) -> anyhow::Result<Self> {
+        Self::from_data(
+            device,
+            queue,
+            Format::R8_UNORM,
+            ImageDimensions::Dim2d {
+                width: 1,
+                height: 1,
+                array_layers: 1,
+            },
+            &[u8::MAX],
+        )
+    }
 }
