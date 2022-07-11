@@ -2,7 +2,7 @@ pub mod config;
 pub mod drawable;
 pub mod pty;
 
-use crate::loaded_font::LoadedFont;
+use crate::loaded_font::{chr::Chr, LoadedFont};
 use cgmath::{Vector2, Vector4, Zero};
 use config::Config;
 use crossbeam::channel::{self, Sender};
@@ -163,38 +163,43 @@ impl Performer {
             Vector2::new(-1.0, -1.0),
         )
     }
+
+    pub fn check_pos(&mut self) {
+        if self.pos.x >= 1.0 - self.font.scale {
+            self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
+        }
+
+        if self.pos.y >= 1.0 {
+            self.pos.y = 1.0 - self.font.scale;
+
+            self.screen.write().unwrap().retain_mut(|d| {
+                d.pos.y -= self.font.scale;
+
+                d.pos.y > -1.0
+            });
+        }
+    }
+
+    fn add_char(&mut self, chr: Arc<Chr>) {
+        let mut screen = self.screen.write().unwrap();
+
+        self.pos.x += chr.bearing.x;
+
+        let mut pos = self.pos;
+
+        pos.y += chr.bearing.y;
+
+        screen.push(Drawable::new(chr.clone(), pos));
+
+        self.pos.x += chr.dimensions.x;
+    }
 }
 
 impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
-            let mut screen = self.screen.write().unwrap();
-
-            self.pos.x += chr.bearing.x;
-
-            {
-                let mut pos = self.pos;
-
-                pos.y += chr.bearing.y;
-
-                screen.push(Drawable::new(chr.clone(), pos));
-            }
-
-            self.pos.x += chr.dimensions.x;
-
-            if self.pos.x >= 1.0 {
-                self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
-            }
-
-            if self.pos.y >= 1.0 {
-                self.pos.y = 1.0 - self.font.scale;
-
-                screen.retain_mut(|d| {
-                    d.pos.y -= self.font.scale;
-
-                    d.pos.y > -1.0
-                });
-            }
+            self.add_char(chr);
+            self.check_pos();
         }
     }
 
@@ -208,11 +213,22 @@ impl Perform for Performer {
         match action {
             'K' => match params.iter().next() {
                 Some([0] | []) => {
-                    self.pos.x = 1.0 - self.font.scale;
+                    self.pos.x = 1.0 + self.font.scale;
+                }
+                _ => {}
+            },
+            'C' => match params.iter().next() {
+                Some([n]) => {
+                    self.pos.x += self.font.scale * *n as f32;
+                }
+                Some([]) => {
+                    self.pos.x += self.font.scale;
                 }
                 _ => {}
             },
             _ => {}
         }
+
+        self.check_pos();
     }
 }

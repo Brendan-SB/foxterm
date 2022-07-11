@@ -331,8 +331,15 @@ impl Renderer {
         }
 
         Self::draw_item(
-            builder, pipeline.clone(), terminal, uniform_buffer, frag_uniform_buffer, proj, performer.pos, cursor
-            );
+            builder,
+            pipeline.clone(),
+            terminal,
+            uniform_buffer,
+            frag_uniform_buffer,
+            proj,
+            performer.pos,
+            cursor,
+        );
     }
 
     #[inline]
