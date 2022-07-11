@@ -164,7 +164,21 @@ impl Performer {
         )
     }
 
-    pub fn check_pos(&mut self) {
+    fn add_char(&mut self, chr: Arc<Chr>) {
+        let mut screen = self.screen.write().unwrap();
+
+        self.pos.x += chr.bearing.x;
+
+        let mut pos = self.pos;
+
+        pos.y += chr.bearing.y;
+
+        screen.push(Drawable::new(chr.clone(), pos));
+
+        self.pos.x += chr.dimensions.x;
+    }
+
+    fn check_pos(&mut self) {
         if self.pos.x >= 1.0 - self.font.scale {
             self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
         }
@@ -178,20 +192,6 @@ impl Performer {
                 d.pos.y > -1.0
             });
         }
-    }
-
-    fn add_char(&mut self, chr: Arc<Chr>) {
-        let mut screen = self.screen.write().unwrap();
-
-        self.pos.x += chr.bearing.x;
-
-        let mut pos = self.pos;
-
-        pos.y += chr.bearing.y;
-
-        screen.push(Drawable::new(chr.clone(), pos));
-
-        self.pos.x += chr.dimensions.x;
     }
 }
 
