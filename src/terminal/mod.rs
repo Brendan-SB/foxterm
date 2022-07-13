@@ -3,7 +3,7 @@ pub mod drawable;
 pub mod pty;
 
 use crate::loaded_font::{chr::Chr, LoadedFont};
-use cgmath::{Vector2, Vector4, Zero};
+use cgmath::{Array, Vector2, Vector4, Zero};
 use config::Config;
 use crossbeam::channel::{self, Sender};
 use drawable::Drawable;
@@ -160,7 +160,7 @@ impl Performer {
             font.clone(),
             screen,
             Vector4::zero(),
-            Vector2::new(-1.0, -1.0),
+            Vector2::from_value(-1.0),
         )
     }
 
@@ -176,53 +176,32 @@ impl Performer {
         screen.push(Drawable::new(chr.clone(), pos));
 
         self.pos.x += chr.dimensions.x;
+
+        update_pos(&mut self.pos, self.font.scale, &mut *screen)
     }
 
     fn advance_parser(&mut self, parser: &mut Parser, u: u8) {
         if u == 8 {
-            if let Some(last) = self.screen.clone().write().unwrap().pop() {
+            if let Some(last) = self.screen.write().unwrap().pop() {
                 self.pos = last.pos;
-
-                self.check_pos();
             }
+
+            update_pos(
+                &mut self.pos,
+                self.font.scale,
+                &mut *self.screen.write().unwrap(),
+            )
         } else if u == 20 {
             self.pos.x += self.font.scale;
 
-            self.check_pos();
+            update_pos(
+                &mut self.pos,
+                self.font.scale,
+                &mut *self.screen.write().unwrap(),
+            )
         } else {
             parser.advance(self, u);
         }
-    }
-
-    fn check_x(&mut self) {
-        if self.pos.x >= 1.0 - self.font.scale {
-            self.pos += Vector2::new(-2.0, self.font.scale);
-
-            self.check_x();
-        } else if self.pos.x <= -1.0 {
-            self.pos += Vector2::new(1.0, -self.font.scale);
-
-            self.check_x();
-        }
-    }
-
-    fn check_y(&mut self) {
-        if self.pos.y >= 1.0 {
-            self.pos.y = 1.0 - self.font.scale;
-
-            self.screen.write().unwrap().retain_mut(|d| {
-                d.pos.y -= self.font.scale;
-
-                d.pos.y > -1.0
-            });
-
-            self.check_y();
-        }
-    }
-
-    fn check_pos(&mut self) {
-        self.check_x();
-        self.check_y();
     }
 }
 
@@ -230,8 +209,6 @@ impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
             self.add_char(chr);
-
-            self.check_pos()
         }
     }
 
@@ -261,6 +238,35 @@ impl Perform for Performer {
             _ => {}
         }
 
-        self.check_pos();
+        update_pos(
+            &mut self.pos,
+            self.font.scale,
+            &mut *self.screen.write().unwrap(),
+        )
     }
+}
+
+fn update_x(pos: &mut Vector2<f32>, scale: f32) {
+    if pos.x > 1.0 - scale {
+        *pos = Vector2::new(-1.0, pos.y + scale);
+    } else if pos.x < -1.0 {
+        *pos = Vector2::new(1.0 - scale, pos.y - scale);
+    }
+}
+
+fn update_y(pos: &mut Vector2<f32>, scale: f32, screen: &mut Vec<Drawable>) {
+    if pos.y > 1.0 - scale {
+        pos.y = 1.0 - scale;
+
+        screen.retain_mut(|d| {
+            d.pos.y -= scale;
+
+            d.pos.y > -1.0
+        });
+    }
+}
+
+fn update_pos(pos: &mut Vector2<f32>, scale: f32, screen: &mut Vec<Drawable>) {
+    update_x(pos, scale);
+    update_y(pos, scale, screen);
 }
