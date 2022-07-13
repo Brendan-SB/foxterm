@@ -93,7 +93,7 @@ impl Terminal {
                         let mut parser = Parser::new();
 
                         for u in buf {
-                            parser.advance(&mut *performer.write().unwrap(), u);
+                            performer.write().unwrap().advance_parser(&mut parser, u);
                         }
                     }
                     Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
@@ -178,13 +178,35 @@ impl Performer {
         self.pos.x += chr.dimensions.x;
     }
 
-    fn check_pos(&mut self) {
+    fn advance_parser(&mut self, parser: &mut Parser, u: u8) {
+        if u == 8 {
+            if let Some(last) = self.screen.clone().write().unwrap().pop() {
+                self.pos = last.pos;
+
+                self.check_pos();
+            }
+        } else if u == 20 {
+            self.pos.x += self.font.scale;
+
+            self.check_pos();
+        } else {
+            parser.advance(self, u);
+        }
+    }
+
+    fn check_x(&mut self) {
         if self.pos.x >= 1.0 - self.font.scale {
             self.pos += Vector2::new(-2.0, self.font.scale);
 
-            self.check_pos();
-        }
+            self.check_x();
+        } else if self.pos.x <= -1.0 {
+            self.pos += Vector2::new(1.0, -self.font.scale);
 
+            self.check_x();
+        }
+    }
+
+    fn check_y(&mut self) {
         if self.pos.y >= 1.0 {
             self.pos.y = 1.0 - self.font.scale;
 
@@ -194,8 +216,13 @@ impl Performer {
                 d.pos.y > -1.0
             });
 
-            self.check_pos();
+            self.check_y();
         }
+    }
+
+    fn check_pos(&mut self) {
+        self.check_x();
+        self.check_y();
     }
 }
 
@@ -203,7 +230,8 @@ impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
             self.add_char(chr);
-            self.check_pos();
+
+            self.check_pos()
         }
     }
 
