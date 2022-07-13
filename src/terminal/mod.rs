@@ -180,7 +180,9 @@ impl Performer {
 
     fn check_pos(&mut self) {
         if self.pos.x >= 1.0 - self.font.scale {
-            self.pos = Vector2::new(-1.0, self.pos.y + self.font.scale);
+            self.pos += Vector2::new(-2.0, self.font.scale);
+
+            self.check_pos();
         }
 
         if self.pos.y >= 1.0 {
@@ -191,6 +193,8 @@ impl Performer {
 
                 d.pos.y > -1.0
             });
+
+            self.check_pos();
         }
     }
 }

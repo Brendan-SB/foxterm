@@ -303,7 +303,6 @@ impl Renderer {
         });
     }
 
-    #[inline]
     fn draw_terminal(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -342,7 +341,6 @@ impl Renderer {
         );
     }
 
-    #[inline]
     fn draw_item(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -401,7 +399,6 @@ impl Renderer {
             .unwrap();
     }
 
-    #[inline]
     fn window_size_dependent_setup(
         render_pass: Arc<RenderPass>,
         device: Arc<Device>,
