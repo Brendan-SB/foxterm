@@ -6,7 +6,7 @@ use crate::loaded_font::{chr::Chr, LoadedFont};
 use cgmath::{Array, Vector2, Vector4, Zero};
 use config::Config;
 use crossbeam::channel::{self, Sender};
-use drawable::Drawable;
+use drawable::{Drawable, RenderItem};
 use pty::Pty;
 use std::{
     env,
@@ -164,7 +164,7 @@ impl Performer {
         )
     }
 
-    fn add_char(&mut self, chr: Arc<Chr>) {
+    fn add_chr(&mut self, chr: Arc<Chr>) {
         let mut screen = self.screen.write().unwrap();
 
         self.pos.x += chr.bearing.x;
@@ -173,9 +173,19 @@ impl Performer {
 
         pos.y += chr.bearing.y;
 
-        screen.push(Drawable::new(chr.clone(), pos));
+        screen.push(Drawable::new(RenderItem::Chr(chr.clone()), pos));
 
         self.pos.x += chr.dimensions.x;
+
+        update_pos(&mut self.pos, self.font.scale, &mut *screen)
+    }
+
+    fn add_space(&mut self) {
+        let mut screen = self.screen.write().unwrap();
+
+        screen.push(Drawable::new(RenderItem::Space, self.pos));
+
+        self.pos.x += self.font.scale / 2.0;
 
         update_pos(&mut self.pos, self.font.scale, &mut *screen)
     }
@@ -192,7 +202,7 @@ impl Performer {
             };
 
             for i in 0..screen.len() {
-                if screen[i].pos.y == min_pos.y && screen[i].pos.x > min_pos.x {
+                if screen[i].pos.y == min_pos.y && screen[i].pos.x >= min_pos.x {
                     self.pos = screen[i].pos;
 
                     screen.remove(i);
@@ -200,8 +210,8 @@ impl Performer {
                     break;
                 }
             }
-        } else if u == 20 {
-            self.pos.x += self.font.scale;
+        } else if u == ' ' as u8 {
+            self.add_space();
 
             update_pos(
                 &mut self.pos,
@@ -217,7 +227,7 @@ impl Performer {
 impl Perform for Performer {
     fn print(&mut self, c: char) {
         if let Some(chr) = self.font.get_chr_by_id(c as u8) {
-            self.add_char(chr);
+            self.add_chr(chr);
         }
     }
 

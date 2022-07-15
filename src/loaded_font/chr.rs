@@ -1,4 +1,7 @@
-use crate::{item::Item, mesh::Mesh, texture::Texture, SCALE};
+use crate::{
+    item::{mesh::Mesh, texture::Texture, Item},
+    SCALE,
+};
 use cgmath::Vector2;
 use fontdue::Metrics;
 use std::sync::Arc;

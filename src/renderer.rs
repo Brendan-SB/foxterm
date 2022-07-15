@@ -1,11 +1,12 @@
 use crate::{
-    item::Item,
+    item::{
+        mesh::{Mesh, Vertex},
+        texture::Texture,
+        Item,
+    },
     loaded_font::LoadedFont,
-    mesh::Mesh,
-    mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::{Performer, Terminal},
-    texture::Texture,
+    terminal::{drawable::RenderItem, Performer, Terminal},
     APP_NAME,
 };
 use cgmath::{Matrix4, Vector2};
@@ -317,16 +318,18 @@ impl Renderer {
         terminal: &Terminal,
     ) {
         for drawable in &*terminal.screen.read().unwrap() {
-            Self::draw_item(
-                builder,
-                pipeline.clone(),
-                terminal,
-                uniform_buffer,
-                frag_uniform_buffer,
-                proj,
-                drawable.pos,
-                &drawable.chr.item,
-            );
+            if let RenderItem::Chr(chr) = &drawable.render_item {
+                Self::draw_item(
+                    builder,
+                    pipeline.clone(),
+                    terminal,
+                    uniform_buffer,
+                    frag_uniform_buffer,
+                    proj,
+                    drawable.pos,
+                    &chr.item,
+                );
+            }
         }
 
         Self::draw_item(

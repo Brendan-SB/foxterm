@@ -3,12 +3,17 @@ use cgmath::Vector2;
 use std::sync::Arc;
 
 pub struct Drawable {
-    pub chr: Arc<Chr>,
+    pub render_item: RenderItem,
     pub pos: Vector2<f32>,
 }
 
 impl Drawable {
-    pub fn new(chr: Arc<Chr>, pos: Vector2<f32>) -> Self {
-        Self { chr, pos }
+    pub fn new(render_item: RenderItem, pos: Vector2<f32>) -> Self {
+        Self { render_item, pos }
     }
+}
+
+pub enum RenderItem {
+    Chr(Arc<Chr>),
+    Space,
 }

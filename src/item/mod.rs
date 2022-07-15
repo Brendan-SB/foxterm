@@ -1,4 +1,8 @@
-use crate::{mesh::Mesh, texture::Texture};
+pub mod mesh;
+pub mod texture;
+
+use mesh::Mesh;
+use texture::Texture;
 
 pub struct Item {
     pub mesh: Mesh,
