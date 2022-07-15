@@ -228,7 +228,6 @@ impl Perform for Performer {
         _ignore: bool,
         action: char,
     ) {
-        /*
         match action {
             'K' => match params.iter().next() {
                 Some([0] | []) => {
@@ -247,7 +246,6 @@ impl Perform for Performer {
             },
             _ => {}
         }
-        */
 
         update_pos(
             &mut self.pos,
