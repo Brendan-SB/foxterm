@@ -182,15 +182,24 @@ impl Performer {
 
     fn advance_parser(&mut self, parser: &mut Parser, u: u8) {
         if u == 8 {
-            if let Some(last) = self.screen.write().unwrap().pop() {
-                self.pos = last.pos;
-            }
+            let mut screen = self.screen.write().unwrap();
+            let min_pos = {
+                let mut min_pos = self.pos - Vector2::new(self.font.scale / 2.0, 0.0);
 
-            update_pos(
-                &mut self.pos,
-                self.font.scale,
-                &mut *self.screen.write().unwrap(),
-            )
+                update_pos(&mut min_pos, self.font.scale, &mut screen);
+
+                min_pos
+            };
+
+            for i in 0..screen.len() {
+                if screen[i].pos.y == min_pos.y && screen[i].pos.x > min_pos.x {
+                    self.pos = screen[i].pos;
+
+                    screen.remove(i);
+
+                    break;
+                }
+            }
         } else if u == 20 {
             self.pos.x += self.font.scale;
 
@@ -219,6 +228,7 @@ impl Perform for Performer {
         _ignore: bool,
         action: char,
     ) {
+        /*
         match action {
             'K' => match params.iter().next() {
                 Some([0] | []) => {
@@ -237,6 +247,7 @@ impl Perform for Performer {
             },
             _ => {}
         }
+        */
 
         update_pos(
             &mut self.pos,
@@ -248,15 +259,15 @@ impl Perform for Performer {
 
 fn update_x(pos: &mut Vector2<f32>, scale: f32) {
     if pos.x > 1.0 - scale {
-        *pos = Vector2::new(-1.0, pos.y + scale);
+        *pos = Vector2::new(-2.0 + pos.x + scale, pos.y + scale);
     } else if pos.x < -1.0 {
-        *pos = Vector2::new(1.0 - scale, pos.y - scale);
+        *pos = Vector2::new(2.0 + pos.x - scale, pos.y - scale);
     }
 }
 
 fn update_y(pos: &mut Vector2<f32>, scale: f32, screen: &mut Vec<Drawable>) {
     if pos.y > 1.0 - scale {
-        pos.y = 1.0 - scale;
+        pos.y = 2.0 - scale - pos.y;
 
         screen.retain_mut(|d| {
             d.pos.y -= scale;
