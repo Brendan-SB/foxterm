@@ -1,11 +1,15 @@
 use crate::{
+    item::{
+        mesh::{Mesh, Vertex},
+        texture::Texture,
+        Item,
+    },
     loaded_font::LoadedFont,
-    mesh::Vertex,
     shaders::{fragment, vertex, Shaders},
-    terminal::{drawable::Drawable, Terminal},
+    terminal::{drawable::RenderItem, Performer, Terminal},
     APP_NAME,
 };
-use cgmath::Matrix4;
+use cgmath::{Matrix4, Vector2};
 use std::sync::Arc;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPool, BufferUsage, TypedBufferAccess},
@@ -49,7 +53,7 @@ use winit_input_helper::WinitInputHelper;
 pub struct Renderer;
 
 impl Renderer {
-    pub fn init(terminal: Arc<Terminal>) -> anyhow::Result<()> {
+    pub fn init(terminal: Terminal) -> anyhow::Result<()> {
         let proj = cgmath::ortho::<f32>(-1.0, 1.0, -1.0, 1.0, -1.0, 1.0);
         let required_extensions = vulkano_win::required_extensions();
         let instance = Instance::new(InstanceCreateInfo {
@@ -170,10 +174,12 @@ impl Renderer {
             queue.clone(),
             &terminal.config,
         )?);
-
-        terminal.clone().spawn_reader(font.clone());
-
-        let write_sndr = terminal.clone().spawn_writer();
+        let cursor = Item::new(
+            Mesh::from_rect(queue.clone(), Vector2::new(font.scale / 2.0, font.scale))?,
+            Texture::white(device.clone(), queue.clone())?,
+        );
+        let performer = terminal.spawn_reader(font.clone());
+        let write_sndr = terminal.spawn_writer();
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
         let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -255,17 +261,16 @@ impl Renderer {
                         )
                         .unwrap();
 
-                    for drawable in &*terminal.screen.read().unwrap() {
-                        Self::draw_item(
-                            &mut builder,
-                            pipeline.clone(),
-                            &uniform_buffer,
-                            &frag_uniform_buffer,
-                            &terminal,
-                            drawable,
-                            proj,
-                        );
-                    }
+                    Self::draw_terminal(
+                        &mut builder,
+                        pipeline.clone(),
+                        &uniform_buffer,
+                        &frag_uniform_buffer,
+                        &performer.read().unwrap(),
+                        &cursor,
+                        proj,
+                        &terminal,
+                    );
 
                     builder.end_render_pass().unwrap();
 
@@ -299,8 +304,7 @@ impl Renderer {
         });
     }
 
-    #[inline]
-    fn draw_item(
+    fn draw_terminal(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
             StandardCommandPoolBuilder,
@@ -308,14 +312,55 @@ impl Renderer {
         pipeline: Arc<GraphicsPipeline>,
         uniform_buffer: &CpuBufferPool<vertex::ty::Data>,
         frag_uniform_buffer: &CpuBufferPool<fragment::ty::Data>,
-        terminal: &Terminal,
-        drawable: &Drawable,
+        performer: &Performer,
+        cursor: &Item,
         proj: Matrix4<f32>,
+        terminal: &Terminal,
+    ) {
+        for drawable in &*terminal.screen.read().unwrap() {
+            if let RenderItem::Chr(chr) = &drawable.render_item {
+                Self::draw_item(
+                    builder,
+                    pipeline.clone(),
+                    terminal,
+                    uniform_buffer,
+                    frag_uniform_buffer,
+                    proj,
+                    drawable.pos,
+                    &chr.item,
+                );
+            }
+        }
+
+        Self::draw_item(
+            builder,
+            pipeline.clone(),
+            terminal,
+            uniform_buffer,
+            frag_uniform_buffer,
+            proj,
+            performer.pos,
+            cursor,
+        );
+    }
+
+    fn draw_item(
+        builder: &mut AutoCommandBufferBuilder<
+            PrimaryAutoCommandBuffer,
+            StandardCommandPoolBuilder,
+        >,
+        pipeline: Arc<GraphicsPipeline>,
+        terminal: &Terminal,
+        uniform_buffer: &CpuBufferPool<vertex::ty::Data>,
+        frag_uniform_buffer: &CpuBufferPool<fragment::ty::Data>,
+        proj: Matrix4<f32>,
+        pos: Vector2<f32>,
+        item: &Item,
     ) {
         let uniform_buffer_subbuffer = {
             let uniform_data = vertex::ty::Data {
                 proj: proj.into(),
-                transform: Matrix4::from_translation(drawable.pos.extend(0.0)).into(),
+                transform: Matrix4::from_translation(pos.extend(0.0)).into(),
             };
 
             Arc::new(uniform_buffer.next(uniform_data).unwrap())
@@ -336,8 +381,8 @@ impl Renderer {
                 WriteDescriptorSet::buffer(1, frag_uniform_buffer_subbuffer),
                 WriteDescriptorSet::image_view_sampler(
                     2,
-                    drawable.chr.texture.image.clone(),
-                    drawable.chr.texture.sampler.clone(),
+                    item.texture.image.clone(),
+                    item.texture.sampler.clone(),
                 ),
             ],
         )
@@ -351,13 +396,12 @@ impl Renderer {
                 0,
                 set.clone(),
             )
-            .bind_vertex_buffers(0, drawable.chr.mesh.vertices.clone())
-            .bind_index_buffer(drawable.chr.mesh.indices.clone())
-            .draw_indexed(drawable.chr.mesh.indices.len() as u32, 1, 0, 0, 0)
+            .bind_vertex_buffers(0, item.mesh.vertices.clone())
+            .bind_index_buffer(item.mesh.indices.clone())
+            .draw_indexed(item.mesh.indices.len() as u32, 1, 0, 0, 0)
             .unwrap();
     }
 
-    #[inline]
     fn window_size_dependent_setup(
         render_pass: Arc<RenderPass>,
         device: Arc<Device>,

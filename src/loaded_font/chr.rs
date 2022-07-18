@@ -1,6 +1,5 @@
 use crate::{
-    mesh::{Mesh, Vertex},
-    texture::Texture,
+    item::{mesh::Mesh, texture::Texture, Item},
     SCALE,
 };
 use cgmath::Vector2;
@@ -8,31 +7,25 @@ use fontdue::Metrics;
 use std::sync::Arc;
 use vulkano::{device::Device, device::Queue, format::Format, image::ImageDimensions};
 
-pub const INDICES: &[u32] = &[0, 1, 2, 1, 2, 3];
-
 pub struct Chr {
+    pub id: u8,
     pub dimensions: Vector2<f32>,
     pub bearing: Vector2<f32>,
-    pub mesh: Mesh,
-    pub texture: Texture,
+    pub item: Item,
 }
 
 impl Chr {
-    pub fn new(
-        dimensions: Vector2<f32>,
-        bearing: Vector2<f32>,
-        mesh: Mesh,
-        texture: Texture,
-    ) -> Self {
+    pub fn new(id: u8, dimensions: Vector2<f32>, bearing: Vector2<f32>, item: Item) -> Self {
         Self {
+            id,
             dimensions,
             bearing,
-            mesh,
-            texture,
+            item,
         }
     }
 
     pub fn from_bitmap(
+        id: u8,
         device: Arc<Device>,
         queue: Arc<Queue>,
         metrics: &Metrics,
@@ -40,36 +33,11 @@ impl Chr {
     ) -> anyhow::Result<Self> {
         let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) * SCALE;
         let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) * SCALE;
-        let mesh = Self::create_mesh(queue.clone(), dimensions)?;
+        let mesh = Mesh::from_rect(queue.clone(), dimensions)?;
         let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
+        let item = Item::new(mesh, texture);
 
-        Ok(Self::new(dimensions, bearing, mesh, texture))
-    }
-
-    fn create_mesh(queue: Arc<Queue>, dimensions: Vector2<f32>) -> anyhow::Result<Mesh> {
-        let vertices = {
-            [
-                Vertex {
-                    uv: [0.0, 0.0],
-                    position: [0.0, 0.0, 0.0],
-                },
-                Vertex {
-                    uv: [0.0, 1.0],
-                    position: [0.0, dimensions.y, 0.0],
-                },
-                Vertex {
-                    uv: [1.0, 0.0],
-                    position: [dimensions.x, 0.0, 0.0],
-                },
-                Vertex {
-                    uv: [1.0, 1.0],
-                    position: [dimensions.x, dimensions.y, 0.0],
-                },
-            ]
-        };
-        let mesh = Mesh::from_data(queue.clone(), &vertices, &INDICES)?;
-
-        Ok(mesh)
+        Ok(Self::new(id, dimensions, bearing, item))
     }
 
     fn create_texture(

@@ -65,12 +65,18 @@ impl LoadedFont {
                 let c = i as char;
                 let (metrics, bitmap) = font.rasterize(c, scale);
 
-                match Chr::from_bitmap(device.clone(), queue.clone(), &metrics, &bitmap) {
+                match Chr::from_bitmap(i, device.clone(), queue.clone(), &metrics, &bitmap) {
                     Ok(chr) => Some(Arc::new(chr)),
                     Err(_) => None,
                 }
             })
             .collect()
+    }
+}
+
+impl Default for LoadedFont {
+    fn default() -> Self {
+        Self::new(Vec::new(), 0.0)
     }
 }
 

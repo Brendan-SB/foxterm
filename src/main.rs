@@ -1,9 +1,10 @@
+#![feature(drain_filter)]
+
+mod item;
 mod loaded_font;
-mod mesh;
 mod renderer;
 mod shaders;
 mod terminal;
-mod texture;
 
 use renderer::Renderer;
 use terminal::Terminal;
