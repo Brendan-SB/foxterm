@@ -171,7 +171,7 @@ impl Performer {
 
         let mut pos = self.pos;
 
-        pos.y += chr.bearing.y;
+        pos.y -= chr.bearing.y;
 
         screen.push(Drawable::new(RenderItem::Chr(chr.clone()), pos));
 
@@ -210,6 +210,8 @@ impl Performer {
                     break;
                 }
             }
+
+            update_pos(&mut self.pos, self.font.scale, &mut *screen);
         } else if u == ' ' as u8 {
             self.add_space();
 
@@ -241,16 +243,16 @@ impl Perform for Performer {
         match action {
             'K' => match params.iter().next() {
                 Some([0] | []) => {
-                    self.pos.x = 1.0 + self.font.scale;
+                    self.pos.x = 1.0 + self.font.scale / 2.0;
                 }
                 _ => {}
             },
             'C' => match params.iter().next() {
                 Some([n]) => {
-                    self.pos.x += self.font.scale * *n as f32;
+                    self.pos.x += self.font.scale / 2.0 * *n as f32;
                 }
                 Some([]) => {
-                    self.pos.x += self.font.scale;
+                    self.pos.x += self.font.scale / 2.0;
                 }
                 _ => {}
             },
@@ -266,19 +268,27 @@ impl Perform for Performer {
 }
 
 fn update_x(pos: &mut Vector2<f32>, scale: f32) {
-    if pos.x > 1.0 - scale {
-        *pos = Vector2::new(-2.0 + pos.x + scale, pos.y + scale);
+    if pos.x > 1.0 - scale / 2.0 {
+        *pos = Vector2::new(
+            -2.0 + pos.x + scale / 2.0,
+            pos.y + scale * (pos.x / 2.0).ceil(),
+        );
     } else if pos.x < -1.0 {
-        *pos = Vector2::new(2.0 + pos.x - scale, pos.y - scale);
+        *pos = Vector2::new(
+            2.0 + pos.x - scale / 2.0,
+            pos.y - scale * (pos.x / -2.0).ceil(),
+        );
     }
 }
 
 fn update_y(pos: &mut Vector2<f32>, scale: f32, screen: &mut Vec<Drawable>) {
     if pos.y > 1.0 - scale {
-        pos.y = 2.0 - scale - pos.y;
+        let dif = scale * (pos.y / (1.0 - scale).ceil());
+
+        pos.y -= dif;
 
         screen.retain_mut(|d| {
-            d.pos.y -= scale;
+            d.pos.y -= dif;
 
             d.pos.y > -1.0
         });
