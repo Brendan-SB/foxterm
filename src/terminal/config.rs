@@ -49,7 +49,7 @@ impl Config {
                 if let ErrorKind::NotFound = e.kind() {
                     let config = Self::default();
 
-                    config.create_file()?;
+                    config.create_file(&DEFAULT_CONFIG_DIR.to_string())?;
 
                     return Ok(config);
                 }
@@ -70,8 +70,8 @@ impl Config {
         Self::from_file(&shellexpand::tilde(DEFAULT_CONFIG_DIR).as_ref().to_string())
     }
 
-    pub fn create_file(&self) -> anyhow::Result<()> {
-        let path = shellexpand::tilde(DEFAULT_CONFIG_DIR);
+    pub fn create_file(&self, path: &String) -> anyhow::Result<()> {
+        let path = shellexpand::tilde(path);
         let path = Path::new(path.as_ref());
         let config_dir = path.parent().unwrap();
 

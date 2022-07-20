@@ -46,7 +46,7 @@ impl LoadedFont {
     }
 
     fn load_bytes(path: &String) -> anyhow::Result<Vec<u8>> {
-        let mut file = File::open(path)?;
+        let mut file = File::open(shellexpand::tilde(path).as_ref())?;
         let mut buffer = Vec::new();
 
         file.read_to_end(&mut buffer)?;
