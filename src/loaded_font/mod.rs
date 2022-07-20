@@ -23,10 +23,10 @@ impl LoadedFont {
         config: &Config,
     ) -> anyhow::Result<Self> {
         let bytes = Self::load_bytes(&config.font.path)?;
-        let font = match Font::from_bytes(bytes.as_slice(), FontSettings::default()) {
-            Ok(font) => font,
-            Err(e) => return Err(LoadedFontError::FontdueError(e).into()),
-        };
+        let font = Self::try_font_from_fontdue_result(Font::from_bytes(
+            bytes.as_slice(),
+            FontSettings::default(),
+        ))?;
         let chrs = Self::create_chrs(device, queue, &font, config.font.scale);
 
         Ok(Self::new(chrs, config.font.scale * SCALE))
@@ -52,6 +52,13 @@ impl LoadedFont {
         file.read_to_end(&mut buffer)?;
 
         Ok(buffer)
+    }
+
+    fn try_font_from_fontdue_result(e: Result<Font, &'static str>) -> anyhow::Result<Font> {
+        match e {
+            Ok(f) => Ok(f),
+            Err(e) => Err(LoadedFontError::StrError(e).into()),
+        }
     }
 
     fn create_chrs(
@@ -82,6 +89,6 @@ impl Default for LoadedFont {
 
 #[derive(Debug, Error)]
 pub enum LoadedFontError {
-    #[error("Fontdue error: {0}")]
-    FontdueError(&'static str),
+    #[error("Error: {0}")]
+    StrError(&'static str),
 }

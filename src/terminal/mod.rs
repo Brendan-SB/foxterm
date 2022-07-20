@@ -115,8 +115,8 @@ impl Terminal {
 
         thread::spawn(move || loop {
             match receiver.recv() {
-                Ok(content) => {
-                    if let Err(e) = pty.write(&content) {
+                Ok(contents) => {
+                    if let Err(e) = pty.write(&contents) {
                         match e.downcast_ref::<nix::errno::Errno>() {
                             Some(nix::errno::Errno::EBADF) => break,
                             _ => {

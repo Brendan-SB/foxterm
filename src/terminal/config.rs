@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{self, File},
-    io::{ErrorKind, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     path::Path,
 };
 
@@ -43,45 +43,49 @@ impl Config {
     }
 
     pub fn from_file(path: &String) -> anyhow::Result<Self> {
-        let mut file = match File::open(path) {
-            Ok(file) => file,
-            Err(e) => {
-                if let ErrorKind::NotFound = e.kind() {
+        match Self::load_contents(path) {
+            Ok(contents) => {
+                let config = serde_yaml::from_str(contents.as_str())?;
+
+                Ok(config)
+            }
+            Err(e) => match e.downcast_ref::<io::Error>().and_then(|e| Some(e.kind())) {
+                Some(ErrorKind::NotFound) => {
                     let config = Self::default();
 
                     config.create_file(&DEFAULT_CONFIG_DIR.to_string())?;
 
-                    return Ok(config);
+                    Ok(config)
                 }
-
-                return Err(e.into());
-            }
-        };
-        let mut contents = String::new();
-
-        file.read_to_string(&mut contents)?;
-
-        let config = serde_yaml::from_str(contents.as_str())?;
-
-        Ok(config)
+                _ => Err(e.into()),
+            },
+        }
     }
 
     pub fn default_from_file() -> anyhow::Result<Self> {
         Self::from_file(&shellexpand::tilde(DEFAULT_CONFIG_DIR).as_ref().to_string())
     }
 
-    pub fn create_file(&self, path: &String) -> anyhow::Result<()> {
+    fn create_file(&self, path: &String) -> anyhow::Result<()> {
         let path = shellexpand::tilde(path);
         let path = Path::new(path.as_ref());
-        let config_dir = path.parent().unwrap();
 
-        fs::create_dir_all(config_dir)?;
+        fs::create_dir_all(path.parent().unwrap())?;
 
         let mut file = File::create(path)?;
 
         file.write_all(serde_yaml::to_string(self)?.as_bytes())?;
 
         Ok(())
+    }
+
+    fn load_contents(path: &String) -> anyhow::Result<String> {
+        let mut file = File::open(path)?;
+        let mut contents = String::new();
+
+        file.read_to_string(&mut contents)?;
+
+        Ok(contents)
     }
 }
 
