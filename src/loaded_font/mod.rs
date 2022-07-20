@@ -22,14 +22,14 @@ impl LoadedFont {
         queue: Arc<Queue>,
         config: &Config,
     ) -> anyhow::Result<Self> {
-        let bytes = Self::load_bytes(&config.font_path)?;
+        let bytes = Self::load_bytes(&config.font.path)?;
         let font = match Font::from_bytes(bytes.as_slice(), FontSettings::default()) {
             Ok(font) => font,
             Err(e) => return Err(LoadedFontError::FontdueError(e).into()),
         };
-        let chrs = Self::create_chrs(device, queue, &font, config.font_scale);
+        let chrs = Self::create_chrs(device, queue, &font, config.font.scale);
 
-        Ok(Self::new(chrs, config.font_scale * SCALE))
+        Ok(Self::new(chrs, config.font.scale * SCALE))
     }
 
     pub fn get_chr_by_id(&self, id: u8) -> Option<Arc<Chr>> {

@@ -35,7 +35,7 @@ impl Terminal {
     pub fn init() -> anyhow::Result<Option<Self>> {
         match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
             Some(pty) => {
-                let config = Config::new(None, [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
+                let config = Config::default_from_file()?;
 
                 Ok(Some(Self::new(
                     config,

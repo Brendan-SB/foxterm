@@ -367,7 +367,7 @@ impl Renderer {
         };
         let frag_uniform_buffer_subbuffer = {
             let uniform_data = fragment::ty::Data {
-                color: terminal.config.font_color.into(),
+                color: terminal.config.font.color.into(),
             };
 
             Arc::new(frag_uniform_buffer.next(uniform_data).unwrap())
