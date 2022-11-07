@@ -13,7 +13,7 @@ impl Shaders {
     pub fn new(device: Arc<Device>) -> anyhow::Result<Self> {
         Ok(Self {
             vertex: vertex::load(device.clone())?,
-            fragment: fragment::load(device.clone())?,
+            fragment: fragment::load(device)?,
         })
     }
 }

@@ -41,7 +41,7 @@ impl Mesh {
         let (indices, _) = ImmutableBuffer::from_iter(
             indices.iter().cloned(),
             BufferUsage::index_buffer(),
-            queue.clone(),
+            queue,
         )?;
 
         Ok(Self::new(vertices, indices))

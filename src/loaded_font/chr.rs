@@ -29,12 +29,12 @@ impl Chr {
         device: Arc<Device>,
         queue: Arc<Queue>,
         metrics: &Metrics,
-        bitmap: &Vec<u8>,
+        bitmap: &[u8],
     ) -> anyhow::Result<Self> {
         let dimensions = Vector2::new(metrics.width as f32, metrics.height as f32) * SCALE;
         let bearing = Vector2::new(metrics.xmin as f32, metrics.ymin as f32) * SCALE;
         let mesh = Mesh::from_rect(queue.clone(), dimensions)?;
-        let texture = Self::create_texture(device.clone(), queue, metrics, bitmap)?;
+        let texture = Self::create_texture(device, queue, metrics, bitmap)?;
         let item = Item::new(mesh, texture);
 
         Ok(Self::new(id, dimensions, bearing, item))

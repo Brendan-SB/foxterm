@@ -1,3 +1,4 @@
+#![allow(clippy::needless_question_mark)]
 vulkano_shaders::shader! {
     ty: "fragment",
     path: "src/shaders/fragment.glsl",

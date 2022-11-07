@@ -38,7 +38,7 @@ impl Pty {
         Ok(buffer)
     }
 
-    pub fn write(&self, buffer: &Vec<u8>) -> anyhow::Result<()> {
+    pub fn write(&self, buffer: &[u8]) -> anyhow::Result<()> {
         unistd::write(self.fd, buffer)?;
 
         Ok(())

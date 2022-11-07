@@ -36,10 +36,7 @@ impl LoadedFont {
         if id >= 33 {
             let i = id as usize - 33;
 
-            match self.chrs.get(i) {
-                Some(chr) => Some(chr.clone()),
-                None => None,
-            }
+            self.chrs.get(i).cloned()
         } else {
             None
         }

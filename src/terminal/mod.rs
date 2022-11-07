@@ -5,7 +5,7 @@ pub mod pty;
 use crate::loaded_font::{chr::Chr, LoadedFont};
 use cgmath::{Array, Vector2, Vector4, Zero};
 use config::Config;
-use crossbeam::channel::{self, Sender};
+use crossbeam::channel::{self, Receiver, Sender};
 use drawable::{Drawable, RenderItem};
 use pty::Pty;
 use std::{
@@ -33,7 +33,7 @@ impl Terminal {
     }
 
     pub fn init() -> anyhow::Result<Option<Self>> {
-        match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
+        match Pty::spawn(env::var("SHELL").unwrap())? {
             Some(pty) => {
                 let config = Config::new(None, [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
 
@@ -57,18 +57,19 @@ impl Terminal {
             .into_iter()
             .map(|c| match c {
                 TextChar::Char(c) => c as u8,
+                #[allow(clippy::char_lit_as_u8)]
                 TextChar::Back => '\u{8}' as u8,
             })
             .collect::<Vec<_>>();
 
         if input.key_pressed(VirtualKeyCode::Return) {
-            text.push('\r' as u8);
+            text.push(b'\r');
         } else if input.key_pressed(VirtualKeyCode::Tab) {
-            text.push('\t' as u8);
+            text.push(b'\t');
         } else if input.key_pressed(VirtualKeyCode::LControl)
             || input.key_pressed(VirtualKeyCode::RControl)
         {
-            text.push('^' as u8);
+            text.push(b'^');
         }
 
         sender.send(text)?;
@@ -79,10 +80,7 @@ impl Terminal {
     pub fn spawn_reader(&self, font: Arc<LoadedFont>) -> Arc<RwLock<Performer>> {
         let pty = self.pty.clone();
         let screen = self.screen.clone();
-        let performer = Arc::new(RwLock::new(Performer::default(
-            font.clone(),
-            screen.clone(),
-        )));
+        let performer = Arc::new(RwLock::new(Performer::default(font, screen)));
 
         {
             let performer = performer.clone();
@@ -111,22 +109,19 @@ impl Terminal {
     }
 
     pub fn spawn_writer(&self) -> Sender<Vec<u8>> {
-        let (sender, receiver) = channel::unbounded();
+        let (sender, receiver): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel::unbounded();
         let pty = self.pty.clone();
 
-        thread::spawn(move || loop {
-            match receiver.recv() {
-                Ok(content) => {
-                    if let Err(e) = pty.write(&content) {
-                        match e.downcast_ref::<nix::errno::Errno>() {
-                            Some(nix::errno::Errno::EBADF) => break,
-                            _ => {
-                                println!("Error on write: {:?}", e);
-                            }
+        thread::spawn(move || {
+            while let Ok(content) = receiver.recv() {
+                if let Err(e) = pty.write(&content) {
+                    match e.downcast_ref::<nix::errno::Errno>() {
+                        Some(nix::errno::Errno::EBADF) => break,
+                        _ => {
+                            println!("Error on write: {:?}", e);
                         }
                     }
                 }
-                Err(_) => break,
             }
         });
 
@@ -157,12 +152,7 @@ impl Performer {
     }
 
     pub fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
-        Self::new(
-            font,
-            screen,
-            Vector4::zero(),
-            Vector2::from_value(-1.0),
-        )
+        Self::new(font, screen, Vector4::zero(), Vector2::from_value(-1.0))
     }
 
     fn add_chr(&mut self, chr: Arc<Chr>) {
@@ -242,9 +232,11 @@ impl Perform for Performer {
         action: char,
     ) {
         match action {
-            'K' => if let Some([0] | []) = params.iter().next() {
+            'K' => {
+                if let Some([0] | []) = params.iter().next() {
                     self.pos.x = 1.0 + self.font.scale / 2.0;
-            },
+                }
+            }
             'C' => match params.iter().next() {
                 Some([0] | []) => {
                     self.pos.x += self.font.scale / 2.0;

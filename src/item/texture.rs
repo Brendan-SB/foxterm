@@ -24,7 +24,7 @@ impl Texture {
         data: &[u8],
     ) -> anyhow::Result<Self> {
         let sampler = Sampler::new(
-            device.clone(),
+            device,
             SamplerCreateInfo {
                 mag_filter: Filter::Linear,
                 min_filter: Filter::Linear,
@@ -39,7 +39,7 @@ impl Texture {
             dimensions,
             MipmapsCount::One,
             format,
-            queue.clone(),
+            queue,
         )?;
         let image = ImageView::new_default(image)?;
 
