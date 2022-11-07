@@ -249,11 +249,11 @@ impl Perform for Performer {
                 _ => {}
             },
             'C' => match params.iter().next() {
+                Some([0] | []) => {
+                    self.pos.x += self.font.scale / 2.0;
+                }
                 Some([n]) => {
                     self.pos.x += self.font.scale / 2.0 * *n as f32;
-                }
-                Some([]) => {
-                    self.pos.x += self.font.scale / 2.0;
                 }
                 _ => {}
             },
@@ -263,7 +263,7 @@ impl Perform for Performer {
         update_pos(
             &mut self.pos,
             self.font.scale,
-            &mut *self.screen.write().unwrap(),
+            &mut self.screen.write().unwrap(),
         )
     }
 }
