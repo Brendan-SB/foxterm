@@ -158,7 +158,7 @@ impl Performer {
 
     pub fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
         Self::new(
-            font.clone(),
+            font,
             screen,
             Vector4::zero(),
             Vector2::from_value(-1.0),
@@ -178,7 +178,7 @@ impl Performer {
 
         self.pos.x += chr.dimensions.x;
 
-        update_pos(&mut self.pos, self.font.scale, &mut *screen)
+        update_pos(&mut self.pos, self.font.scale, &mut screen)
     }
 
     fn add_space(&mut self) {
@@ -188,7 +188,7 @@ impl Performer {
 
         self.pos.x += self.font.scale / 2.0;
 
-        update_pos(&mut self.pos, self.font.scale, &mut *screen)
+        update_pos(&mut self.pos, self.font.scale, &mut screen)
     }
 
     fn advance_parser(&mut self, parser: &mut Parser, u: u8) {
@@ -212,14 +212,14 @@ impl Performer {
                 }
             }
 
-            update_pos(&mut self.pos, self.font.scale, &mut *screen);
-        } else if u == ' ' as u8 {
+            update_pos(&mut self.pos, self.font.scale, &mut screen);
+        } else if u == b' ' {
             self.add_space();
 
             update_pos(
                 &mut self.pos,
                 self.font.scale,
-                &mut *self.screen.write().unwrap(),
+                &mut self.screen.write().unwrap(),
             )
         } else {
             parser.advance(self, u);
@@ -242,11 +242,8 @@ impl Perform for Performer {
         action: char,
     ) {
         match action {
-            'K' => match params.iter().next() {
-                Some([0] | []) => {
+            'K' => if let Some([0] | []) = params.iter().next() {
                     self.pos.x = 1.0 + self.font.scale / 2.0;
-                }
-                _ => {}
             },
             'C' => match params.iter().next() {
                 Some([0] | []) => {
