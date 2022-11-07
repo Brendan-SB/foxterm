@@ -91,9 +91,10 @@ impl Terminal {
                 match pty.read() {
                     Ok(buf) => {
                         let mut parser = Parser::new();
+                        let mut performer = performer.write().unwrap();
 
                         for u in buf {
-                            performer.write().unwrap().advance_parser(&mut parser, u);
+                            performer.advance_parser(&mut parser, u);
                         }
                     }
                     Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
