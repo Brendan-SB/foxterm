@@ -1,5 +1,3 @@
-#![feature(drain_filter)]
-
 mod item;
 mod loaded_font;
 mod renderer;
