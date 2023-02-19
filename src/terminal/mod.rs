@@ -162,7 +162,7 @@ impl Performer {
 
         let mut pos = self.pos;
 
-        pos.y += chr.bearing.y;
+        pos.y -= chr.bearing.y;
 
         screen.push(Drawable::new(RenderItem::Chr(chr.clone()), pos));
 

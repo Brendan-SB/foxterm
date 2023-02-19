@@ -26,8 +26,8 @@ impl Texture {
         let sampler = Sampler::new(
             device,
             SamplerCreateInfo {
-                mag_filter: Filter::Linear,
-                min_filter: Filter::Linear,
+                mag_filter: Filter::Nearest,
+                min_filter: Filter::Nearest,
                 address_mode: [SamplerAddressMode::Repeat; 3],
                 mip_lod_bias: 1.0,
                 lod: 0.0..=100.0,
