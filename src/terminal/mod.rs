@@ -35,7 +35,7 @@ impl Terminal {
     pub fn init() -> anyhow::Result<Option<Self>> {
         match Pty::spawn(env::var("SHELL").unwrap())? {
             Some(pty) => {
-                let config = Config::new(None, [0.0; 4], "test.ttf".to_owned(), [1.0; 4], 40.0);
+                let config = Config::default_from_file()?;
 
                 Ok(Some(Self::new(
                     config,
@@ -111,7 +111,7 @@ impl Terminal {
     pub fn spawn_writer(&self) -> Sender<Vec<u8>> {
         let (sender, receiver): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel::unbounded();
         let pty = self.pty.clone();
-
+ 
         thread::spawn(move || {
             while let Ok(content) = receiver.recv() {
                 if let Err(e) = pty.write(&content) {

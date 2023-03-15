@@ -22,14 +22,14 @@ impl LoadedFont {
         queue: Arc<Queue>,
         config: &Config,
     ) -> anyhow::Result<Self> {
-        let bytes = Self::load_bytes(&config.font_path)?;
-        let font = match Font::from_bytes(bytes.as_slice(), FontSettings::default()) {
-            Ok(font) => font,
-            Err(e) => return Err(LoadedFontError::FontdueError(e).into()),
-        };
-        let chrs = Self::create_chrs(device, queue, &font, config.font_scale);
+        let bytes = Self::load_bytes(&config.font.path)?;
+        let font = Self::try_font_from_fontdue_result(Font::from_bytes(
+            bytes.as_slice(),
+            FontSettings::default(),
+        ))?;
+        let chrs = Self::create_chrs(device, queue, &font, config.font.scale);
 
-        Ok(Self::new(chrs, config.font_scale * SCALE))
+        Ok(Self::new(chrs, config.font.scale * SCALE))
     }
 
     pub fn get_chr_by_id(&self, id: u8) -> Option<Arc<Chr>> {
@@ -43,12 +43,19 @@ impl LoadedFont {
     }
 
     fn load_bytes(path: &String) -> anyhow::Result<Vec<u8>> {
-        let mut file = File::open(path)?;
+        let mut file = File::open(shellexpand::tilde(path).as_ref())?;
         let mut buffer = Vec::new();
 
         file.read_to_end(&mut buffer)?;
 
         Ok(buffer)
+    }
+
+    fn try_font_from_fontdue_result(e: Result<Font, &'static str>) -> anyhow::Result<Font> {
+        match e {
+            Ok(f) => Ok(f),
+            Err(e) => Err(LoadedFontError::StrError(e).into()),
+        }
     }
 
     fn create_chrs(
@@ -79,6 +86,6 @@ impl Default for LoadedFont {
 
 #[derive(Debug, Error)]
 pub enum LoadedFontError {
-    #[error("Fontdue error: {0}")]
-    FontdueError(&'static str),
+    #[error("Error: {0}")]
+    StrError(&'static str),
 }
