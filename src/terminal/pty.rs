@@ -21,7 +21,7 @@ impl Pty {
         match fork_pty.fork_result {
             ForkResult::Parent { .. } => Ok(Some(Arc::new(Self::new(fork_pty.master)))),
             ForkResult::Child => {
-                let _ = Command::new(&shell_path).status()?;
+                let _ = Command::new(shell_path).status()?;
 
                 Ok(None)
             }
