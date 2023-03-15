@@ -21,7 +21,7 @@ impl Pty {
         match fork_pty.fork_result {
             ForkResult::Parent { .. } => Ok(Some(Arc::new(Self::new(fork_pty.master)))),
             ForkResult::Child => {
-                let _ = Command::new(&shell_path).status()?;
+                let _ = Command::new(shell_path).status()?;
 
                 Ok(None)
             }
@@ -38,7 +38,7 @@ impl Pty {
         Ok(buffer)
     }
 
-    pub fn write(&self, buffer: &Vec<u8>) -> anyhow::Result<()> {
+    pub fn write(&self, buffer: &[u8]) -> anyhow::Result<()> {
         unistd::write(self.fd, buffer)?;
 
         Ok(())

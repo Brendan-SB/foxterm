@@ -5,7 +5,7 @@ pub mod pty;
 use crate::loaded_font::{chr::Chr, LoadedFont};
 use cgmath::{Array, Vector2, Vector4, Zero};
 use config::Config;
-use crossbeam::channel::{self, Sender};
+use crossbeam::channel::{self, Receiver, Sender};
 use drawable::{Drawable, RenderItem};
 use pty::Pty;
 use std::{
@@ -33,7 +33,7 @@ impl Terminal {
     }
 
     pub fn init() -> anyhow::Result<Option<Self>> {
-        match Pty::spawn(env::var("SHELL").unwrap().to_owned())? {
+        match Pty::spawn(env::var("SHELL").unwrap())? {
             Some(pty) => {
                 let config = Config::default_from_file()?;
 
@@ -57,18 +57,19 @@ impl Terminal {
             .into_iter()
             .map(|c| match c {
                 TextChar::Char(c) => c as u8,
+                #[allow(clippy::char_lit_as_u8)]
                 TextChar::Back => '\u{8}' as u8,
             })
             .collect::<Vec<_>>();
 
         if input.key_pressed(VirtualKeyCode::Return) {
-            text.push('\r' as u8);
+            text.push(b'\r');
         } else if input.key_pressed(VirtualKeyCode::Tab) {
-            text.push('\t' as u8);
+            text.push(b'\t');
         } else if input.key_pressed(VirtualKeyCode::LControl)
             || input.key_pressed(VirtualKeyCode::RControl)
         {
-            text.push('^' as u8);
+            text.push(b'^');
         }
 
         sender.send(text)?;
@@ -79,10 +80,7 @@ impl Terminal {
     pub fn spawn_reader(&self, font: Arc<LoadedFont>) -> Arc<RwLock<Performer>> {
         let pty = self.pty.clone();
         let screen = self.screen.clone();
-        let performer = Arc::new(RwLock::new(Performer::default(
-            font.clone(),
-            screen.clone(),
-        )));
+        let performer = Arc::new(RwLock::new(Performer::default(font, screen)));
 
         {
             let performer = performer.clone();
@@ -91,9 +89,10 @@ impl Terminal {
                 match pty.read() {
                     Ok(buf) => {
                         let mut parser = Parser::new();
+                        let mut performer = performer.write().unwrap();
 
                         for u in buf {
-                            performer.write().unwrap().advance_parser(&mut parser, u);
+                            performer.advance_parser(&mut parser, u);
                         }
                     }
                     Err(e) => match e.downcast_ref::<nix::errno::Errno>() {
@@ -110,22 +109,19 @@ impl Terminal {
     }
 
     pub fn spawn_writer(&self) -> Sender<Vec<u8>> {
-        let (sender, receiver) = channel::unbounded();
+        let (sender, receiver): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel::unbounded();
         let pty = self.pty.clone();
-
-        thread::spawn(move || loop {
-            match receiver.recv() {
-                Ok(contents) => {
-                    if let Err(e) = pty.write(&contents) {
-                        match e.downcast_ref::<nix::errno::Errno>() {
-                            Some(nix::errno::Errno::EBADF) => break,
-                            _ => {
-                                println!("Error on write: {:?}", e);
-                            }
+ 
+        thread::spawn(move || {
+            while let Ok(content) = receiver.recv() {
+                if let Err(e) = pty.write(&content) {
+                    match e.downcast_ref::<nix::errno::Errno>() {
+                        Some(nix::errno::Errno::EBADF) => break,
+                        _ => {
+                            println!("Error on write: {:?}", e);
                         }
                     }
                 }
-                Err(_) => break,
             }
         });
 
@@ -156,12 +152,7 @@ impl Performer {
     }
 
     pub fn default(font: Arc<LoadedFont>, screen: Arc<RwLock<Vec<Drawable>>>) -> Self {
-        Self::new(
-            font.clone(),
-            screen,
-            Vector4::zero(),
-            Vector2::from_value(-1.0),
-        )
+        Self::new(font, screen, Vector4::zero(), Vector2::from_value(-1.0))
     }
 
     fn add_chr(&mut self, chr: Arc<Chr>) {
@@ -177,7 +168,7 @@ impl Performer {
 
         self.pos.x += chr.dimensions.x;
 
-        update_pos(&mut self.pos, self.font.scale, &mut *screen)
+        update_pos(&mut self.pos, self.font.scale, &mut screen)
     }
 
     fn add_space(&mut self) {
@@ -187,7 +178,7 @@ impl Performer {
 
         self.pos.x += self.font.scale / 2.0;
 
-        update_pos(&mut self.pos, self.font.scale, &mut *screen)
+        update_pos(&mut self.pos, self.font.scale, &mut screen)
     }
 
     fn advance_parser(&mut self, parser: &mut Parser, u: u8) {
@@ -211,14 +202,14 @@ impl Performer {
                 }
             }
 
-            update_pos(&mut self.pos, self.font.scale, &mut *screen);
-        } else if u == ' ' as u8 {
+            update_pos(&mut self.pos, self.font.scale, &mut screen);
+        } else if u == b' ' {
             self.add_space();
 
             update_pos(
                 &mut self.pos,
                 self.font.scale,
-                &mut *self.screen.write().unwrap(),
+                &mut self.screen.write().unwrap(),
             )
         } else {
             parser.advance(self, u);
@@ -241,18 +232,17 @@ impl Perform for Performer {
         action: char,
     ) {
         match action {
-            'K' => match params.iter().next() {
-                Some([0] | []) => {
+            'K' => {
+                if let Some([0] | []) = params.iter().next() {
                     self.pos.x = 1.0 + self.font.scale / 2.0;
                 }
-                _ => {}
-            },
+            }
             'C' => match params.iter().next() {
+                Some([0] | []) => {
+                    self.pos.x += self.font.scale / 2.0;
+                }
                 Some([n]) => {
                     self.pos.x += self.font.scale / 2.0 * *n as f32;
-                }
-                Some([]) => {
-                    self.pos.x += self.font.scale / 2.0;
                 }
                 _ => {}
             },
@@ -262,7 +252,7 @@ impl Perform for Performer {
         update_pos(
             &mut self.pos,
             self.font.scale,
-            &mut *self.screen.write().unwrap(),
+            &mut self.screen.write().unwrap(),
         )
     }
 }

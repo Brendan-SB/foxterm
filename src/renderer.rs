@@ -178,7 +178,7 @@ impl Renderer {
             Mesh::from_rect(queue.clone(), Vector2::new(font.scale / 2.0, font.scale))?,
             Texture::white(device.clone(), queue.clone())?,
         );
-        let performer = terminal.spawn_reader(font.clone());
+        let performer = terminal.spawn_reader(font);
         let write_sndr = terminal.spawn_writer();
         let mut input = WinitInputHelper::new();
         let mut recreate_swapchain = false;
@@ -304,6 +304,7 @@ impl Renderer {
         });
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_terminal(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -334,7 +335,7 @@ impl Renderer {
 
         Self::draw_item(
             builder,
-            pipeline.clone(),
+            pipeline,
             terminal,
             uniform_buffer,
             frag_uniform_buffer,
@@ -344,6 +345,7 @@ impl Renderer {
         );
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_item(
         builder: &mut AutoCommandBufferBuilder<
             PrimaryAutoCommandBuffer,
@@ -367,7 +369,7 @@ impl Renderer {
         };
         let frag_uniform_buffer_subbuffer = {
             let uniform_data = fragment::ty::Data {
-                color: terminal.config.font.color.into(),
+                color: terminal.config.font_color,
             };
 
             Arc::new(frag_uniform_buffer.next(uniform_data).unwrap())
@@ -394,7 +396,7 @@ impl Renderer {
                 PipelineBindPoint::Graphics,
                 pipeline.layout().clone(),
                 0,
-                set.clone(),
+                set,
             )
             .bind_vertex_buffers(0, item.mesh.vertices.clone())
             .bind_index_buffer(item.mesh.indices.clone())
@@ -429,7 +431,7 @@ impl Renderer {
                 .unwrap()
             })
             .collect();
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
+        let subpass = Subpass::from(render_pass, 0).unwrap();
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
             .vertex_shader(shaders.vertex.entry_point("main").unwrap(), ())
@@ -447,7 +449,7 @@ impl Renderer {
             .depth_stencil_state(DepthStencilState::simple_depth_test())
             .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()).blend_alpha())
             .render_pass(subpass)
-            .build(device.clone())?;
+            .build(device)?;
 
         Ok((pipeline, framebuffers))
     }
